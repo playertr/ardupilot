@@ -124,3 +124,5 @@ segv_*out
 /ArduSub/scripts/
 persistent.dat
 dumpstack_*out
+docs/
+@DOXYFILE*
