@@ -26,7 +26,7 @@ void setup(void)
 
     hal.console->printf("AP_InertialSensor startup...\n");
 
-    ins.init(100);
+    ins.init(238);
 
     // display initial values
     display_offsets_and_scaling();
@@ -114,14 +114,16 @@ static void run_test()
 
     // loop as long as user does not press a key
     while (!hal.console->available()) {
+        //hal.console->printf("Waiting for Sample%u\n", i++);
         // wait until we have a sample
         ins.wait_for_sample();
 
+        //hal.console->printf("Updating from INS\n");
         // read samples from ins
         ins.update();
 
         // print each accel/gyro result every 50 cycles
-        if (counter++ % 50 != 0) {
+        if (counter++ % 10 != 0) {
             continue;
         }
 
