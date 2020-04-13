@@ -194,7 +194,7 @@ extern const AP_HAL::HAL& hal;
 #   define LSM9DS1XG_INT_GEN_DUR_G_WAIT_G         (0x1 << 7)
 
 AP_InertialSensor_LSM9DS1::AP_InertialSensor_LSM9DS1(AP_InertialSensor &imu,
-                                                     AP_HAL::OwnPtr<AP_HAL::SPIDevice> dev,
+                                                     AP_HAL::OwnPtr<AP_HAL::Device> dev,
                                                      int drdy_pin_num_xg,
                                                      enum Rotation rotation)
     : AP_InertialSensor_Backend(imu)
@@ -203,10 +203,10 @@ AP_InertialSensor_LSM9DS1::AP_InertialSensor_LSM9DS1(AP_InertialSensor &imu,
     , _rotation(rotation)
 
 {
-}
+}                          
 
 AP_InertialSensor_Backend *AP_InertialSensor_LSM9DS1::probe(AP_InertialSensor &_imu,
-                                                            AP_HAL::OwnPtr<AP_HAL::SPIDevice> dev,
+                                                            AP_HAL::OwnPtr<AP_HAL::Device> dev,
                                                             enum Rotation rotation)
 {
     if (!dev) {
@@ -226,7 +226,7 @@ AP_InertialSensor_Backend *AP_InertialSensor_LSM9DS1::probe(AP_InertialSensor &_
 
 bool AP_InertialSensor_LSM9DS1::_init_sensor()
 {
-    _spi_sem = _dev->get_semaphore();
+    _sem = _dev->get_semaphore();
 
     if (_drdy_pin_num_xg >= 0) {
         _drdy_pin_xg = hal.gpio->channel(_drdy_pin_num_xg);
@@ -246,12 +246,12 @@ bool AP_InertialSensor_LSM9DS1::_init_sensor()
 
 bool AP_InertialSensor_LSM9DS1::_hardware_init()
 {
-    _spi_sem->take_blocking();
+    _sem->take_blocking();
 
     uint8_t tries, whoami;
 
     // set flag for reading registers
-    _dev->set_read_flag(0x80);
+    _dev->set_read_flag(0x00); // Tim changed this from 0x80 for I2C 
 
     whoami = _register_read(LSM9DS1XG_WHO_AM_I);
     if (whoami != WHO_AM_I) {
@@ -263,12 +263,12 @@ bool AP_InertialSensor_LSM9DS1::_hardware_init()
 
     for (tries = 0; tries < 5; tries++) {
 
-        _dev->set_speed(AP_HAL::Device::SPEED_LOW);
+        //_dev->set_speed(AP_HAL::Device::SPEED_LOW);
 
         _gyro_init();
         _accel_init();
 
-        _dev->set_speed(AP_HAL::Device::SPEED_HIGH);
+        //_dev->set_speed(AP_HAL::Device::SPEED_HIGH);
 
         hal.scheduler->delay(10);
 
@@ -288,18 +288,18 @@ bool AP_InertialSensor_LSM9DS1::_hardware_init()
         goto fail_tries;
     }
 
-    _spi_sem->give();
+    _sem->give();
     return true;
 
 fail_tries:
 fail_whoami:
-    _spi_sem->give();
+    _sem->give();
     return false;
 }
 
 void AP_InertialSensor_LSM9DS1::_fifo_reset()
 {
-    _dev->set_speed(AP_HAL::Device::SPEED_LOW);
+    //_dev->set_speed(AP_HAL::Device::SPEED_LOW);
 
     //Disable FIFO
     int reg_9 = _register_read(LSM9DS1XG_CTRL_REG9);
@@ -309,7 +309,8 @@ void AP_InertialSensor_LSM9DS1::_fifo_reset()
     _dev->write_register(LSM9DS1XG_FIFO_CTRL, LSM9DS1XG_FIFO_CTRL_FMODE_BYPASS);
 
     //Enable FIFO and Disable I2C
-    _dev->write_register(LSM9DS1XG_CTRL_REG9,LSM9DS1XG_CTRL_REG9_FIFO_EN | LSM9DS1XG_CTRL_REG9_I2C_DISABLE);
+    //_dev->write_register(LSM9DS1XG_CTRL_REG9,LSM9DS1XG_CTRL_REG9_FIFO_EN | LSM9DS1XG_CTRL_REG9_I2C_DISABLE);
+    _dev->write_register(LSM9DS1XG_CTRL_REG9,LSM9DS1XG_CTRL_REG9_FIFO_EN); // TIM changed this to enable I2C
 
     //Enable block data update, allow auto-increment during multiple byte read
     _dev->write_register(LSM9DS1XG_CTRL_REG8, LSM9DS1XG_CTRL_REG8_BDU | LSM9DS1XG_CTRL_REG8_IF_ADD_INC);
@@ -319,7 +320,7 @@ void AP_InertialSensor_LSM9DS1::_fifo_reset()
     _dev->write_register(LSM9DS1XG_FIFO_CTRL, 0x1F | LSM9DS1XG_FIFO_CTRL_FMODE_FIFO);
     hal.scheduler->delay_microseconds(1);
 
-    _dev->set_speed(AP_HAL::Device::SPEED_HIGH);
+    //_dev->set_speed(AP_HAL::Device::SPEED_HIGH);
 
     notify_accel_fifo_reset(_accel_instance);
     notify_gyro_fifo_reset(_gyro_instance);
@@ -330,8 +331,10 @@ void AP_InertialSensor_LSM9DS1::_fifo_reset()
  */
 void AP_InertialSensor_LSM9DS1::start(void)
 {
-    _gyro_instance = _imu.register_gyro(952, _dev->get_bus_id_devtype(DEVTYPE_GYR_LSM9DS1));
-    _accel_instance = _imu.register_accel(952, _dev->get_bus_id_devtype(DEVTYPE_ACC_LSM9DS1));
+    // _gyro_instance = _imu.register_gyro(952, _dev->get_bus_id_devtype(DEVTYPE_GYR_LSM9DS1));
+    // _accel_instance = _imu.register_accel(952, _dev->get_bus_id_devtype(DEVTYPE_ACC_LSM9DS1));
+    _gyro_instance = _imu.register_gyro(238, _dev->get_bus_id_devtype(DEVTYPE_GYR_LSM9DS1));
+    _accel_instance = _imu.register_accel(238, _dev->get_bus_id_devtype(DEVTYPE_ACC_LSM9DS1));
 
     set_accel_orientation(_accel_instance, _rotation);
     set_gyro_orientation(_gyro_instance, _rotation);
@@ -339,6 +342,7 @@ void AP_InertialSensor_LSM9DS1::start(void)
     _set_accel_max_abs_offset(_accel_instance, 5.0f);
 
     /* start the timer process to read samples */
+    //_dev->register_periodic_callback(1000, FUNCTOR_BIND_MEMBER(&AP_InertialSensor_LSM9DS1::_poll_data, void));
     _dev->register_periodic_callback(1000, FUNCTOR_BIND_MEMBER(&AP_InertialSensor_LSM9DS1::_poll_data, void));
 }
 
@@ -357,8 +361,11 @@ void AP_InertialSensor_LSM9DS1::_register_write(uint8_t reg, uint8_t val, bool c
 
 void AP_InertialSensor_LSM9DS1::_gyro_init()
 {
-    _register_write(LSM9DS1XG_CTRL_REG1_G, LSM9DS1XG_CTRL_REG1_G_ODR_G_952Hz |
-                                              LSM9DS1XG_CTRL_REG1_FS_G_2000DPS);
+    // _register_write(LSM9DS1XG_CTRL_REG1_G, LSM9DS1XG_CTRL_REG1_G_ODR_G_952Hz |
+    //                                          LSM9DS1XG_CTRL_REG1_FS_G_2000DPS);
+    
+    _register_write(LSM9DS1XG_CTRL_REG1_G, LSM9DS1XG_CTRL_REG1_G_ODR_G_238Hz |
+                                              LSM9DS1XG_CTRL_REG1_FS_G_2000DPS);                                          
     hal.scheduler->delay(1);
 
     _register_write(LSM9DS1XG_CTRL_REG4, LSM9DS1XG_CTRL_REG4_Zen_G |
@@ -370,8 +377,11 @@ void AP_InertialSensor_LSM9DS1::_gyro_init()
 
 void AP_InertialSensor_LSM9DS1::_accel_init()
 {
-    _register_write(LSM9DS1XG_CTRL_REG6_XL, LSM9DS1XG_CTRL_REG6_XL_ODR_XL_952Hz |
+    // _register_write(LSM9DS1XG_CTRL_REG6_XL, LSM9DS1XG_CTRL_REG6_XL_ODR_XL_952Hz |
+    //                                            LSM9DS1XG_CTRL_REG6_XL_FS_XL_16G);
+    _register_write(LSM9DS1XG_CTRL_REG6_XL, LSM9DS1XG_CTRL_REG6_XL_ODR_XL_238Hz |
                                                LSM9DS1XG_CTRL_REG6_XL_FS_XL_16G);
+
     hal.scheduler->delay(1);
 
     _register_write(LSM9DS1XG_CTRL_REG5_XL, LSM9DS1XG_CTRL_REG5_XL_Zen_XL |
