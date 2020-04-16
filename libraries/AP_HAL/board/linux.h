@@ -238,6 +238,7 @@
     #define HAL_MAG_PROBE_LIST PROBE_MAG_I2C(LSM9DS1, 1, 0x1c, ROTATION_NONE) //TIM
     // only external compasses
 
+    #define HAL_GPS_TYPE_DEFAULT 2
 
     // #define HAL_BARO_PROBE_LIST PROBE_BARO_SPI(MS56XX, "ms5611") TIM
     #define HAL_BARO_PROBE_LIST PROBE_BARO_I2C(BMP388, 1, 0x77) // TIM
