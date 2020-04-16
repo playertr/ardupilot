@@ -25,6 +25,7 @@
 #include <GCS_MAVLink/GCS.h>
 #include "RTCM3_Parser.h"
 #include <stdio.h>
+#include <GCS_MAVLink/GCS.h> //debug, TIM
 
 #if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NAVIO || \
     CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BH
@@ -34,7 +35,7 @@
 #endif
 
 
-#define UBLOX_DEBUGGING 0
+#define UBLOX_DEBUGGING 1
 #define UBLOX_FAKE_3DLOCK 0
 #define CONFIGURE_PPS_PIN 0
 
@@ -59,8 +60,12 @@ extern const AP_HAL::HAL& hal;
 #define GCS_SEND_TEXT(severity, format, args...) gcs().send_text(severity, format, ##args)
 #endif
 
+// Debug("Unconfigured messages: 0x%x Current message: %u\n", (unsigned)_unconfigured_messages, (unsigned)_next_message);
+// GCS_SEND_TEXT(MAV_SEVERITY_ERROR, "u-blox %d: failed RTCMv3 parser allocation", state.instance + 1);
+//  # define Debug(fmt, args ...)  do {hal.console->printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); hal.scheduler->delay(1); } while(0)
+
 #if UBLOX_DEBUGGING
- # define Debug(fmt, args ...)  do {hal.console->printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); hal.scheduler->delay(1); } while(0)
+ # define Debug(fmt, args ...)  do {gcs().send_text(MAV_SEVERITY_INFO, fmt, ##args); hal.scheduler->delay(1); } while(0)
 #else
  # define Debug(fmt, args ...)
 #endif
@@ -270,6 +275,15 @@ AP_GPS_UBLOX::_request_next_config(void)
             }
         }
         break;
+    case STEP_PMS: //TIM
+        {
+        Debug("Attempted to send PMS message.");
+        uint8_t msg = MSG_CFG_PMS;
+        if(!_send_message(CLASS_CFG, MSG_CFG_PMS, &msg, sizeof(uint8_t))) {
+            _next_message--;
+        }
+        break;
+        }
     case STEP_POLL_SBAS:
         if (gps._sbas_mode != 2) {
             _send_message(CLASS_CFG, MSG_CFG_SBAS, nullptr, 0);
@@ -1545,6 +1559,8 @@ AP_GPS_UBLOX::_update_checksum(uint8_t *data, uint16_t len, uint8_t &ck_a, uint8
 bool
 AP_GPS_UBLOX::_send_message(uint8_t msg_class, uint8_t msg_id, void *msg, uint16_t size)
 {
+    // hal.console->printf("GPS_UBLOX attempted message send."); //TIM
+    // gcs().send_text(MAV_SEVERITY_CRITICAL, "GPS_UBLOX attempted message send.");
     if (port->txspace() < (sizeof(struct ubx_header) + 2 + size)) {
         return false;
     }
