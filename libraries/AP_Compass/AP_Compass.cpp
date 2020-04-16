@@ -682,7 +682,7 @@ void Compass::init()
     }
 #endif
     //TIM
-    // _reorder_compass_params(); 
+    //_reorder_compass_params(); 
 
     if (_compass_count == 0) {
         // detect available backends. Only called once
