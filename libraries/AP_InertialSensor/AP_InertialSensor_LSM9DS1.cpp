@@ -333,8 +333,8 @@ void AP_InertialSensor_LSM9DS1::start(void)
 {
     // _gyro_instance = _imu.register_gyro(952, _dev->get_bus_id_devtype(DEVTYPE_GYR_LSM9DS1));
     // _accel_instance = _imu.register_accel(952, _dev->get_bus_id_devtype(DEVTYPE_ACC_LSM9DS1));
-    _gyro_instance = _imu.register_gyro(238, _dev->get_bus_id_devtype(DEVTYPE_GYR_LSM9DS1));
-    _accel_instance = _imu.register_accel(238, _dev->get_bus_id_devtype(DEVTYPE_ACC_LSM9DS1));
+    _gyro_instance = _imu.register_gyro(119, _dev->get_bus_id_devtype(DEVTYPE_GYR_LSM9DS1));
+    _accel_instance = _imu.register_accel(119, _dev->get_bus_id_devtype(DEVTYPE_ACC_LSM9DS1));
 
     set_accel_orientation(_accel_instance, _rotation);
     set_gyro_orientation(_gyro_instance, _rotation);
@@ -364,7 +364,7 @@ void AP_InertialSensor_LSM9DS1::_gyro_init()
     // _register_write(LSM9DS1XG_CTRL_REG1_G, LSM9DS1XG_CTRL_REG1_G_ODR_G_952Hz |
     //                                          LSM9DS1XG_CTRL_REG1_FS_G_2000DPS);
     
-    _register_write(LSM9DS1XG_CTRL_REG1_G, LSM9DS1XG_CTRL_REG1_G_ODR_G_238Hz |
+    _register_write(LSM9DS1XG_CTRL_REG1_G, LSM9DS1XG_CTRL_REG1_G_ODR_G_119Hz |
                                               LSM9DS1XG_CTRL_REG1_FS_G_2000DPS);                                          
     hal.scheduler->delay(1);
 
@@ -379,7 +379,7 @@ void AP_InertialSensor_LSM9DS1::_accel_init()
 {
     // _register_write(LSM9DS1XG_CTRL_REG6_XL, LSM9DS1XG_CTRL_REG6_XL_ODR_XL_952Hz |
     //                                            LSM9DS1XG_CTRL_REG6_XL_FS_XL_16G);
-    _register_write(LSM9DS1XG_CTRL_REG6_XL, LSM9DS1XG_CTRL_REG6_XL_ODR_XL_238Hz |
+    _register_write(LSM9DS1XG_CTRL_REG6_XL, LSM9DS1XG_CTRL_REG6_XL_ODR_XL_119Hz |
                                                LSM9DS1XG_CTRL_REG6_XL_FS_XL_16G);
 
     hal.scheduler->delay(1);
