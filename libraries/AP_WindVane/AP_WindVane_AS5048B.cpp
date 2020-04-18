@@ -45,8 +45,6 @@ AP_WindVane_AS5048B::AP_WindVane_AS5048B(AP_WindVane &frontend) :
 // init - performs any required initialization for this instance
 void AP_WindVane_AS5048B::init()
 {
-    const uint8_t address = RE_ADDRESS;
-
     _dev = hal.i2c_mgr->get_device(I2C_BUS, RE_ADDRESS);
     if (!_dev) {
         hal.console->printf("No AP_WindVane_AS5048B found.");
@@ -55,7 +53,6 @@ void AP_WindVane_AS5048B::init()
 
     hal.console->printf("AP_WindVane_AS5048B: Found on bus %u address 0x%02x",
                         I2C_BUS, RE_ADDRESS);
-
 
 
     calibrate();
@@ -68,34 +65,34 @@ void AP_WindVane_AS5048B::calibrate()
     _dev->set_retries(10);
     // set initial position to zero by setting the zero register to zero,
     // reading the measured angle, and setting the register to this angle.
-    int ret = _dev->transfer(RE_ZEROMSB_REG, 0x00, nullptr, 0);
+    int ret = _dev->write_register(RE_ZEROMSB_REG, 0x00);
     if (!ret) {
         _dev->get_semaphore()->give();
         return;
     }
-    ret = _dev->transfer(RE_ZEROLSB_REG, 0x00, nullptr, 0);
+    ret = _dev->write_register(RE_ZEROLSB_REG, 0x00);
     if (!ret) {
         _dev->get_semaphore()->give();
         return;
     }
     uint8_t msb = 0;
-    ret = _dev->transfer(RE_ANGLEMSB_REG, 0x00, &msb, 1);
+    ret = _dev->read_registers(RE_ANGLEMSB_REG, &msb, 1);
     if (!ret) {
         _dev->get_semaphore()->give();
         return;
     }
     uint8_t lsb = 0;
-    ret = _dev->transfer(RE_ANGLELSB_REG, 0x00, &lsb, 1);
+    ret = _dev->read_registers(RE_ANGLELSB_REG, &lsb, 1);
     if (!ret) {
         _dev->get_semaphore()->give();
         return;
     }
-    ret = _dev->transfer(RE_ZEROMSB_REG, msb, nullptr, 0);
+    ret = _dev->write_register(RE_ZEROMSB_REG, msb);
     if (!ret) {
         _dev->get_semaphore()->give();
         return;
     }
-    ret = _dev->transfer(RE_ZEROLSB_REG, lsb, nullptr, 0);
+    ret = _dev->write_register(RE_ZEROLSB_REG, lsb);
     if (!ret) {
         _dev->get_semaphore()->give();
         return;
@@ -108,20 +105,20 @@ void AP_WindVane_AS5048B::update_direction()
 {
     _dev->get_semaphore()->take_blocking();
     uint8_t msb = 0;
-    int ret = _dev->transfer(RE_ANGLEMSB_REG, 0, &msb, 1);
+    int ret = _dev->read_registers(RE_ANGLEMSB_REG, &msb, 1);
     if (!ret) {
         return;
     }
     uint8_t lsb = 0;
-    int ret = _dev->transfer(RE_ANGLELSB_REG, 0, &lsb, 1);
+    ret = _dev->read_registers(RE_ANGLELSB_REG, &lsb, 1);
     if (!ret) {
         return;
     }
     _dev->get_semaphore()->give();
 
     // bit shifting, see https://ams.com/documents/20143/36005/AS5048_DS000298_4-00.pdf p. 25
-    uint16_t ang = (msb << 6) | (lsb & 0x3f) 
-    _wind_dir_deg = (float) angle * 360.0 / 16384.0
+    uint16_t angle = ((uint16_t) msb << 6) | (lsb & 0x3f);
+    _wind_dir_deg = (float) angle * 360.0 / 16384.0;
 
     // user may not have AS5048B selected for direction, I think.
     if (_frontend._direction_type.get() == _frontend.WindVaneType::WINDVANE_AS5048B) {

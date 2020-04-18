@@ -37,6 +37,7 @@ class AP_WindVane
     friend class AP_WindVane_RPM;
     friend class AP_WindVane_NMEA;
     friend class AP_WindVane_I2C;
+    friend class AP_WindVane_AS5048B;
 
 public:
     AP_WindVane();
@@ -147,6 +148,7 @@ private:
         WINDVANE_ANALOG_PIN     = 3,
         WINDVANE_NMEA           = 4,
         WINDVANE_I2C            = 5,
+        WINDVANE_AS5048B        = 6,
         WINDVANE_SITL           = 10
     };
 
@@ -157,6 +159,7 @@ private:
         WINDSPEED_RPM                = 3,
         WINDSPEED_NMEA               = 4,
         WINDSPEED_I2C                 = 5,
+        WINDSPEED_AS5048B        = 6,
         WINDSPEED_SITL               = 10
     };
 
