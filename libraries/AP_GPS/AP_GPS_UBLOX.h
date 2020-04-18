@@ -24,12 +24,6 @@
 
 #include "AP_GPS.h"
 #include "GPS_Backend.h"
-/*
- * TIM: I changed some of the settings to make my M8N better for a sailboat. Specifically, I
- * - changed the PMS power management settings to Full Power
- * - changed the PM2 power settings to "cyclic update" with 200 ms period
- * - changed the NAV5 dynamic model to "at sea" to constrain vertical motion
-/*
 
 /*
  *  try to put a UBlox into binary mode. This is in two parts. 
@@ -525,7 +519,7 @@ private:
     union PACKED {
         DEFINE_BYTE_ARRAY_METHODS
         ubx_nav_posllh posllh;
-        ubx_nav_status status; //didn't populate in U-center?
+        ubx_nav_status status;
         ubx_nav_dop dop;
         ubx_nav_solution solution;
         ubx_nav_pvt pvt;
@@ -588,7 +582,6 @@ private:
         MSG_TIMEGPS = 0x20,
         MSG_RELPOSNED = 0x3c,
         MSG_VELNED = 0x12,
-        MSG_CFG_PMS = 0x00, //TIM
         MSG_CFG_CFG = 0x09,
         MSG_CFG_RATE = 0x08,
         MSG_CFG_MSG = 0x01,
@@ -648,7 +641,6 @@ private:
         STEP_VELNED,
         STEP_TIMEGPS,
         STEP_POLL_SVINFO, // poll svinfo
-        STEP_PMS, //TIM added this.
         STEP_POLL_SBAS, // poll SBAS
         STEP_POLL_NAV, // poll NAV settings
         STEP_POLL_GNSS, // poll GNSS
