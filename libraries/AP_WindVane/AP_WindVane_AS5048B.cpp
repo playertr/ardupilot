@@ -107,11 +107,13 @@ void AP_WindVane_AS5048B::update_direction()
     uint8_t msb = 0;
     int ret = _dev->read_registers(RE_ANGLEMSB_REG, &msb, 1);
     if (!ret) {
+        _dev->get_semaphore()->give();
         return;
     }
     uint8_t lsb = 0;
     ret = _dev->read_registers(RE_ANGLELSB_REG, &lsb, 1);
     if (!ret) {
+        _dev->get_semaphore()->give();
         return;
     }
     _dev->get_semaphore()->give();
