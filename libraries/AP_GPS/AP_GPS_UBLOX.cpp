@@ -58,9 +58,9 @@ extern const AP_HAL::HAL& hal;
 #else
 #define GCS_SEND_TEXT(severity, format, args...) gcs().send_text(severity, format, ##args)
 #endif
-
+//# define Debug(fmt, args ...)  do {hal.console->printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); hal.scheduler->delay(1); } while(0)
 #if UBLOX_DEBUGGING
- # define Debug(fmt, args ...)  do {hal.console->printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); hal.scheduler->delay(1); } while(0)
+ # define Debug(fmt, args ...)  do {GCS_SEND_TEXT(MAV_SEVERITY_INFO, fmt, ##args); hal.scheduler->delay(1); } while(0)
 #else
  # define Debug(fmt, args ...)
 #endif
