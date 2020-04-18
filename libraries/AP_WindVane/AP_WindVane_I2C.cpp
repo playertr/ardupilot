@@ -67,7 +67,7 @@ void AP_WindVane_I2C::update_speed()
 
 void AP_WindVane_I2C::update()
 {
-
+    WITH_SEMAPHORE(_sem);
     // read 6 bytes from the sensor
     uint8_t val[6];
     int ret = _dev->transfer(nullptr, 0, &val[0], sizeof(val));
