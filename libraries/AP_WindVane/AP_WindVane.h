@@ -36,6 +36,7 @@ class AP_WindVane
     friend class AP_WindVane_Airspeed;
     friend class AP_WindVane_RPM;
     friend class AP_WindVane_NMEA;
+    friend class AP_WindVane_I2C;
 
 public:
     AP_WindVane();
@@ -145,6 +146,7 @@ private:
         WINDVANE_PWM_PIN        = 2,
         WINDVANE_ANALOG_PIN     = 3,
         WINDVANE_NMEA           = 4,
+        WINDVANE_I2C            = 5,
         WINDVANE_SITL           = 10
     };
 
@@ -154,6 +156,7 @@ private:
         WINDVANE_WIND_SENSOR_REV_P   = 2,
         WINDSPEED_RPM                = 3,
         WINDSPEED_NMEA               = 4,
+        WINDSPEED_I2C                 = 5,
         WINDSPEED_SITL               = 10
     };
 

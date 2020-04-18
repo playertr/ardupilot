@@ -22,16 +22,17 @@
 #include "AP_WindVane_RPM.h"
 #include "AP_WindVane_SITL.h"
 #include "AP_WindVane_NMEA.h"
+#include "AP_WindVane_I2C.h"
 
 const AP_Param::GroupInfo AP_WindVane::var_info[] = {
 
     // @Param: TYPE
     // @DisplayName: Wind Vane Type
     // @Description: Wind Vane type
-    // @Values: 0:None,1:Heading when armed,2:RC input offset heading when armed,3:Analog,4:NMEA,10:SITL
+    // @Values: 0:None,1:Heading when armed,2:RC input offset heading when armed,3:Analog,4:NMEA,5:I2C,10:SITL
     // @User: Standard
     // @RebootRequired: True
-    AP_GROUPINFO_FLAGS("TYPE", 1, AP_WindVane, _direction_type, 0, AP_PARAM_FLAG_ENABLE),
+    AP_GROUPINFO_FLAGS("TYPE", 1, AP_WindVane, _direction_type, 5, AP_PARAM_FLAG_ENABLE),
 
     // @Param: RC_IN_NO
     // @DisplayName: Wind vane sensor RC Input Channel
@@ -110,7 +111,7 @@ const AP_Param::GroupInfo AP_WindVane::var_info[] = {
     // @Param: SPEED_TYPE
     // @DisplayName: Wind speed sensor Type
     // @Description: Wind speed sensor type
-    // @Values: 0:None,1:Airspeed library,2:Modern Devices Wind Sensor,3:RPM library,4:NMEA,10:SITL
+    // @Values: 0:None,1:Airspeed library,2:Modern Devices Wind Sensor,3:RPM library,4:NMEA,5:I2C,10:SITL
     // @User: Standard
     // @RebootRequired: True
     AP_GROUPINFO("SPEED_TYPE", 11, AP_WindVane, _speed_sensor_type,  0),
@@ -209,6 +210,9 @@ void AP_WindVane::init(const AP_SerialManager& serial_manager)
             _direction_driver = new AP_WindVane_NMEA(*this);
             _direction_driver->init(serial_manager);
             break;
+        case WindVaneType::WINDVANE_I2C:
+            _direction_driver = new AP_WindVane_I2C(*this);
+            _direction_driver->init();
     }
 
     // wind speed
@@ -243,6 +247,12 @@ void AP_WindVane::init(const AP_SerialManager& serial_manager)
         case Speed_type::WINDSPEED_RPM:
             _speed_driver = new AP_WindVane_RPM(*this);
             break;
+        case Speed_type::WINDSPEED_I2C:
+            if (_direction_type != WindVaneType::WINDVANE_I2C){
+                _speed_driver = new AP_WindVane_I2C(*this);
+            } else {
+                _speed_driver = _direction_driver;
+            }
     }
 }
 
