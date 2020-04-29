@@ -23,6 +23,8 @@ using namespace Linux;
 
 extern const AP_HAL::HAL& hal;
 
+//#define DEBUG_STACK 1
+
 #define APM_LINUX_MAX_PRIORITY          20
 #define APM_LINUX_TIMER_PRIORITY        15
 #define APM_LINUX_UART_PRIORITY         14
@@ -113,7 +115,8 @@ void Scheduler::init()
         const struct sched_table *t = &sched_table[i];
 
         t->thread->set_rate(t->rate);
-        t->thread->set_stack_size(1024 * 1024);
+        //t->thread->set_stack_size(1024 * 1024);
+        t->thread->set_stack_size(2048 * 1024); //TIM: https://github.com/ArduPilot/ardupilot/pull/6301/commits/a8672b7b9e6f1e0f50cf2058086573b2587a12b5
         t->thread->start(t->name, t->policy, t->prio);
     }
 
