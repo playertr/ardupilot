@@ -1,7 +1,7 @@
 #pragma once
 
 #include <AP_HAL/AP_HAL.h>
-#include <AP_HAL/SPIDevice.h>
+#include <AP_HAL/Device.h>
 
 #include "AP_InertialSensor.h"
 #include "AP_InertialSensor_Backend.h"
