@@ -681,8 +681,7 @@ void Compass::init()
         extra_dev_id[i].set(0);
     }
 #endif
-    //TIM
-    //_reorder_compass_params(); 
+    _reorder_compass_params(); 
 
     if (_compass_count == 0) {
         // detect available backends. Only called once
