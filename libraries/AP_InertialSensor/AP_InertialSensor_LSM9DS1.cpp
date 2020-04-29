@@ -331,6 +331,8 @@ void AP_InertialSensor_LSM9DS1::_fifo_reset()
  */
 void AP_InertialSensor_LSM9DS1::start(void)
 {
+    _sem->take_blocking();
+
     // _gyro_instance = _imu.register_gyro(952, _dev->get_bus_id_devtype(DEVTYPE_GYR_LSM9DS1));
     // _accel_instance = _imu.register_accel(952, _dev->get_bus_id_devtype(DEVTYPE_ACC_LSM9DS1));
     _gyro_instance = _imu.register_gyro(119, _dev->get_bus_id_devtype(DEVTYPE_GYR_LSM9DS1));
@@ -342,8 +344,9 @@ void AP_InertialSensor_LSM9DS1::start(void)
     _set_accel_max_abs_offset(_accel_instance, 5.0f);
 
     /* start the timer process to read samples */
-    //_dev->register_periodic_callback(1000, FUNCTOR_BIND_MEMBER(&AP_InertialSensor_LSM9DS1::_poll_data, void));
     _dev->register_periodic_callback(1000, FUNCTOR_BIND_MEMBER(&AP_InertialSensor_LSM9DS1::_poll_data, void));
+
+    _sem->give();
 }
 
 uint8_t AP_InertialSensor_LSM9DS1::_register_read(uint8_t reg)
@@ -422,8 +425,9 @@ void AP_InertialSensor_LSM9DS1::_set_accel_scale(accel_scale scale)
  */
 void AP_InertialSensor_LSM9DS1::_poll_data()
 {
-    uint16_t samples = _register_read(LSM9DS1XG_FIFO_SRC);
+    _sem->take_blocking();
 
+    uint16_t samples = _register_read(LSM9DS1XG_FIFO_SRC);
 
     samples = samples & LSM9DS1XG_FIFO_SRC_UNREAD_SAMPLES;
     if (samples > 1) {
@@ -439,6 +443,8 @@ void AP_InertialSensor_LSM9DS1::_poll_data()
     if (!_dev->check_next_register()) {
         _inc_accel_error_count(_accel_instance);
     }
+
+    _sem->give();
 }
 
 void AP_InertialSensor_LSM9DS1::_read_data_transaction_x(uint16_t samples)
