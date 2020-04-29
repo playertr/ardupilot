@@ -277,8 +277,13 @@ void RCInput_RPI::stop_dma()
 /* We need to be sure that the DMA is stopped upon termination */
 void RCInput_RPI::termination_handler(int signum)
 {
+    //TIM: handle signal and generate coredump
+    signal(signum, SIG_DFL);
+    kill(getpid(), signum);
+    
     stop_dma();
     AP_HAL::panic("Interrupted: %s", strsignal(signum));
+
 }
 
 // This function is used to init DMA control blocks (setting sampling GPIO
