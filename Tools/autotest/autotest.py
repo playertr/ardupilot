@@ -17,7 +17,7 @@ import sys
 import time
 import traceback
 
-import apmrover2
+import rover
 import arducopter
 import arduplane
 import ardusub
@@ -167,7 +167,7 @@ def param_parse_filepath():
 def all_vehicles():
     return ('ArduPlane',
             'ArduCopter',
-            'APMrover2',
+            'Rover',
             'AntennaTracker',
             'ArduSub')
 
@@ -299,9 +299,9 @@ tester_class_map = {
     "test.CopterTests2": arducopter.AutoTestCopterTests2,
     "test.Plane": arduplane.AutoTestPlane,
     "test.QuadPlane": quadplane.AutoTestQuadPlane,
-    "test.Rover": apmrover2.AutoTestRover,
+    "test.Rover": rover.AutoTestRover,
     "test.BalanceBot": balancebot.AutoTestBalanceBot,
-    "test.Helicopter,": arducopter.AutoTestHeli,
+    "test.Helicopter": arducopter.AutoTestHeli,
     "test.Sub": ardusub.AutoTestSub,
     "test.Tracker": antennatracker.AutoTestTracker,
 }
@@ -337,6 +337,7 @@ def run_step(step):
         "debug": opts.debug,
         "clean": not opts.no_clean,
         "configure": not opts.no_configure,
+        "math_check_indexes": opts.math_check_indexes,
         "extra_configure_args": opts.waf_configure_args,
     }
 
@@ -379,6 +380,7 @@ def run_step(step):
         "disable_breakpoints": opts.disable_breakpoints,
         "frame": opts.frame,
         "_show_test_timings": opts.show_test_timings,
+        "force_ahrs_type": opts.force_ahrs_type,
     }
     if opts.speedup is not None:
         fly_opts["speedup"] = opts.speedup
@@ -540,7 +542,7 @@ def write_fullresults():
     results.addglob('APM:Libraries documentation', 'docs/libraries/index.html')
     results.addglob('APM:Plane documentation', 'docs/ArduPlane/index.html')
     results.addglob('APM:Copter documentation', 'docs/ArduCopter/index.html')
-    results.addglob('APM:Rover documentation', 'docs/APMrover2/index.html')
+    results.addglob('APM:Rover documentation', 'docs/Rover/index.html')
     results.addglob('APM:Sub documentation', 'docs/ArduSub/index.html')
     results.addglobimage("Flight Track", '*.png')
 
@@ -550,11 +552,7 @@ def write_fullresults():
 def check_logs(step):
     """Check for log files from a step."""
     print("check step: ", step)
-    if step.startswith('fly.'):
-        vehicle = step[4:]
-    elif step.startswith('drive.'):
-        vehicle = step[6:]
-    elif step.startswith('dive.'):
+    if step.startswith('test.'):
         vehicle = step[5:]
     else:
         return
@@ -598,7 +596,6 @@ def run_tests(steps):
                 results.add(step, '<span class="passed-text">PASSED</span>',
                             time.time() - t1)
                 print(">>>> PASSED STEP: %s at %s" % (step, time.asctime()))
-                check_logs(step)
             else:
                 print(">>>> FAILED STEP: %s at %s" % (step, time.asctime()))
                 passed = False
@@ -609,6 +606,7 @@ def run_tests(steps):
                     failed_testinstances[step].append(testinstance)
                 results.add(step, '<span class="failed-text">FAILED</span>',
                             time.time() - t1)
+                check_logs(step)
         except Exception as msg:
             passed = False
             failed.append(step)
@@ -638,6 +636,16 @@ def run_tests(steps):
 
     return passed
 
+def list_subtests(*args, **kwargs):
+    for vehicle in sorted(['Sub', 'Copter', 'Plane', 'Tracker', 'Rover']):
+        tester_class = tester_class_map["test.%s" % vehicle]
+        tester = tester_class("/bin/true", None)
+        subtests = tester.tests()
+        print("%s:" % vehicle)
+        for subtest in sorted(subtests, key=lambda x : x[0]):
+            (name, description, function) = subtest
+            print("    %s: %s" % (name, description))
+        print("")
 
 if __name__ == "__main__":
     ''' main program '''
@@ -645,7 +653,18 @@ if __name__ == "__main__":
 
     os.putenv('TMPDIR', util.reltopdir('tmp'))
 
-    parser = optparse.OptionParser("autotest")
+    class MyOptionParser(optparse.OptionParser):
+        def format_epilog(self, formatter):
+            return self.epilog
+
+    parser = MyOptionParser(
+        "autotest", epilog=""
+        "e.g. autotest.py build.Rover test.Rover # test Rover\n"
+        "e.g. autotest.py build.Rover test.Rover build.Plane test.Plane # test Rover and Plane\n"
+        "e.g. autotest.py --debug --valgrind build.Rover test.Rover # test Rover under Valgrind\n"
+        "e.g. autotest.py --debug --gdb build.Tracker test.Tracker # run Tracker under gdb\n"
+        "e.g. autotest.py --debug --gdb build.Sub test.Sub.DiveManual # do specific Sub test\n"
+    )
     parser.add_option("--skip",
                       type='string',
                       default='',
@@ -654,6 +673,10 @@ if __name__ == "__main__":
                       action='store_true',
                       default=False,
                       help='list the available steps')
+    parser.add_option("--list-subtests",
+                      action='store_true',
+                      default=False,
+                      help='list available subtests e.g. test.Copter')
     parser.add_option("--viewerip",
                       default=None,
                       help='IP address to send MAVLink and fg packets to')
@@ -704,6 +727,11 @@ if __name__ == "__main__":
                            default=False,
                            action='store_true',
                            help='make built binaries debug binaries')
+    group_build.add_option("--enable-math-check-indexes",
+                           default=False,
+                           action="store_true",
+                           dest="math_check_indexes",
+                           help="enable checking of math indexes")
     parser.add_option_group(group_build)
 
     group_sim = optparse.OptionGroup(parser, "Simulation options")
@@ -736,6 +764,10 @@ if __name__ == "__main__":
                          default=False,
                          action='store_true',
                          help="disable all breakpoints before starting")
+    group_sim.add_option("", "--force-ahrs-type",
+                         dest="force_ahrs_type",
+                         default=None,
+                         help="force a specific AHRS type (e.g. 10 for SITL-ekf")
     parser.add_option_group(group_sim)
 
     opts, args = parser.parse_args()
@@ -830,6 +862,10 @@ if __name__ == "__main__":
     if opts.list:
         for step in steps:
             print(step)
+        sys.exit(0)
+
+    if opts.list_subtests:
+        list_subtests()
         sys.exit(0)
 
     util.mkdir_p(buildlogs_dirpath())

@@ -365,7 +365,7 @@ public:
     void set_baro_alt_noise(float noise) { _baroAltNoise.set_and_save(noise); };
 
     // allow the enable flag to be set by Replay
-    void set_enable(bool enable) { _enable.set(enable); }
+    void set_enable(bool enable) { _enable.set_enable(enable); }
 
     // are we doing sensor logging inside the EKF?
     bool have_ekf_logging(void) const { return logging.enabled && _logging_mask != 0; }
@@ -381,8 +381,24 @@ public:
      */
     void checkLaneSwitch(void);
 
+    /*
+      Request a reset of the EKF yaw. This is called when the vehicle code is about to
+      trigger an EKF failsafe, and it would like to avoid that.
+     */
+    void requestYawReset(void);
+
     // write EKF information to on-board logs
     void Log_Write();
+
+    // are we using an external yaw source? This is needed by AHRS attitudes_consistent check
+    bool using_external_yaw(void) const;
+    
+    // Writes the default equivalent airspeed in m/s to be used in forward flight if a measured airspeed is required and not available.
+    void writeDefaultAirSpeed(float airspeed);
+
+    // log debug data for yaw estimator
+    // return false if data not available
+    bool getDataEKFGSF(int8_t instance, float &yaw_composite, float &yaw_composite_variance, float yaw[N_MODELS_EKFGSF], float innov_VN[N_MODELS_EKFGSF], float innov_VE[N_MODELS_EKFGSF], float weight[N_MODELS_EKFGSF]) const;
 
 private:
     uint8_t num_cores; // number of allocated cores
@@ -410,7 +426,7 @@ private:
     AP_Float _gyroBiasProcessNoise; // gyro bias state process noise : rad/s
     AP_Float _accelBiasProcessNoise;// accel bias state process noise : m/s^2
     AP_Int16 _hgtDelay_ms;          // effective average delay of Height measurements relative to inertial measurements (msec)
-    AP_Int8  _fusionModeGPS;        // 0 = use 3D velocity, 1 = use 2D velocity, 2 = use no velocity
+    AP_Int8  _fusionModeGPS;        // 0 = use 3D velocity, 1 = use 2D velocity, 2 = use no velocity, 3 = do not use GPS
     AP_Int16  _gpsVelInnovGate;     // Percentage number of standard deviations applied to GPS velocity innovation consistency check
     AP_Int16  _gpsPosInnovGate;     // Percentage number of standard deviations applied to GPS position innovation consistency check
     AP_Int16  _hgtInnovGate;        // Percentage number of standard deviations applied to height innovation consistency check
@@ -448,6 +464,10 @@ private:
     AP_Int8  _flowUse;              // Controls if the optical flow data is fused into the main navigation estimator and/or the terrain estimator.
     AP_Float _hrt_filt_freq;        // frequency of output observer height rate complementary filter in Hz
     AP_Int16 _mag_ef_limit;         // limit on difference between WMM tables and learned earth field.
+    AP_Int8 _gsfRunMask;            // mask controlling which EKF3 instances run a separate EKF-GSF yaw estimator
+    AP_Int8 _gsfUseMask;            // mask controlling which EKF3 instances will use EKF-GSF yaw estimator data to assit with yaw resets
+    AP_Int16 _gsfResetDelay;        // number of mSec from loss of navigation to requesting a reset using EKF-GSF yaw estimator data
+    AP_Int8 _gsfResetMaxCount;      // maximum number of times the EKF3 is allowed to reset it's yaw to the EKF-GSF estimate
 
 // Possible values for _flowUse
 #define FLOW_USE_NONE    0
@@ -553,4 +573,6 @@ private:
     void Log_Write_Beacon(uint64_t time_us) const;
     void Log_Write_BodyOdom(uint64_t time_us) const;
     void Log_Write_State_Variances(uint64_t time_us) const;
+    void Log_Write_GSF(uint8_t core, uint64_t time_us) const;
+
 };

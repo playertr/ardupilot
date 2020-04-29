@@ -262,6 +262,8 @@ void Plane::one_second_loop()
     adsb.set_stall_speed_cm(aparm.airspeed_min);
     adsb.set_max_speed(aparm.airspeed_max);
 
+    ahrs.writeDefaultAirSpeed((float)((aparm.airspeed_min + aparm.airspeed_max)/2));
+
     // sync MAVLink system ID
     mavlink_system.sysid = g.sysid_this_mav;
 
@@ -577,13 +579,6 @@ void Plane::update_alt()
         if (flight_stage == AP_Vehicle::FixedWing::FLIGHT_LAND && current_loc.past_interval_finish_line(prev_WP_loc, next_WP_loc)) {
             distance_beyond_land_wp = current_loc.get_distance(next_WP_loc);
         }
-
-        bool soaring_active = false;
-#if SOARING_ENABLED == ENABLED
-        if (g2.soaring_controller.is_active() && g2.soaring_controller.get_throttle_suppressed()) {
-            soaring_active = true;
-        }
-#endif
         
         SpdHgt_Controller->update_pitch_throttle(relative_target_altitude_cm(),
                                                  target_airspeed_cm,
@@ -592,8 +587,7 @@ void Plane::update_alt()
                                                  get_takeoff_pitch_min_cd(),
                                                  throttle_nudge,
                                                  tecs_hgt_afe(),
-                                                 aerodynamic_load_factor,
-                                                 soaring_active);
+                                                 aerodynamic_load_factor);
     }
 }
 

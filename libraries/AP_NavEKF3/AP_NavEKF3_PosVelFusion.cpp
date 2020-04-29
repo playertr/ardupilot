@@ -28,9 +28,6 @@ void NavEKF3_core::ResetVelocity(void)
     zeroRows(P,4,5);
     zeroCols(P,4,5);
 
-    gps_elements gps_corrected = gpsDataNew;
-    CorrectGPSForAntennaOffset(gps_corrected);
-
     if (PV_AidingMode != AID_ABSOLUTE) {
         stateStruct.velocity.zero();
         // set the variances using the measurement noise parameter
@@ -38,6 +35,9 @@ void NavEKF3_core::ResetVelocity(void)
     } else {
         // reset horizontal velocity states to the GPS velocity if available
         if ((imuSampleTime_ms - lastTimeGpsReceived_ms < 250 && velResetSource == DEFAULT) || velResetSource == GPS) {
+            // correct for antenna position
+            gps_elements gps_corrected = gpsDataNew;
+            CorrectGPSForAntennaOffset(gps_corrected);
             stateStruct.velocity.x  = gps_corrected.vel.x;
             stateStruct.velocity.y  = gps_corrected.vel.y;
             // set the variances using the reported GPS speed accuracy
@@ -94,11 +94,11 @@ void NavEKF3_core::ResetPosition(void)
         // set the variances using the position measurement noise parameter
         P[7][7] = P[8][8] = sq(frontend->_gpsHorizPosNoise);
     } else  {
-        gps_elements gps_corrected = gpsDataNew;
-        CorrectGPSForAntennaOffset(gps_corrected);
-
         // Use GPS data as first preference if fresh data is available
         if ((imuSampleTime_ms - lastTimeGpsReceived_ms < 250 && posResetSource == DEFAULT) || posResetSource == GPS) {
+            // correct for antenna position
+            gps_elements gps_corrected = gpsDataNew;
+            CorrectGPSForAntennaOffset(gps_corrected);
             // record the ID of the GPS for the data we are using for the reset
             last_gps_idx = gps_corrected.sensor_idx;
             // write to state vector and compensate for offset  between last GPS measurement and the EKF time horizon
@@ -249,7 +249,7 @@ bool NavEKF3_core::resetHeightDatum(void)
 /*
   correct GPS data for position offset of antenna phase centre relative to the IMU
  */
-void NavEKF3_core::CorrectGPSForAntennaOffset(gps_elements &gps_data)
+void NavEKF3_core::CorrectGPSForAntennaOffset(gps_elements &gps_data) const
 {
     const Vector3f &posOffsetBody = AP::gps().get_antenna_offset(gps_data.sensor_idx) - accelPosOffset;
     if (posOffsetBody.is_zero()) {
@@ -284,9 +284,12 @@ void NavEKF3_core::SelectVelPosFusion()
         posVelFusionDelayed = false;
     }
 
-    // read GPS data from the sensor and check for new data in the buffer
+    // Read GPS data from the sensor
     readGpsData();
+
+    // get data that has now fallen behind the fusion time horizon
     gpsDataToFuse = storedGPS.recall(gpsDataDelayed,imuDataDelayed.time_ms);
+
     // Determine if we need to fuse position and velocity data on this time step
     if (gpsDataToFuse && PV_AidingMode == AID_ABSOLUTE) {
 
@@ -342,7 +345,7 @@ void NavEKF3_core::SelectVelPosFusion()
         // store the time of the reset
         lastPosReset_ms = imuSampleTime_ms;
 
-        // If we are alseo using GPS as the height reference, reset the height
+        // If we are also using GPS as the height reference, reset the height
         if (activeHgtSource == HGT_SOURCE_GPS) {
             // Store the position before the reset so that we can record the reset delta
             posResetD = stateStruct.position.z;
@@ -435,7 +438,7 @@ void NavEKF3_core::FuseVelPosNED()
         // Use different errors if operating without external aiding using an assumed position or velocity of zero
         if (PV_AidingMode == AID_NONE) {
             if (tiltAlignComplete && motorsArmed) {
-            // This is a compromise between corrections for gyro errors and reducing effect of manoeuvre accelerations on tilt estimate
+                // This is a compromise between corrections for gyro errors and reducing effect of manoeuvre accelerations on tilt estimate
                 R_OBS[0] = sq(constrain_float(frontend->_noaidHorizNoise, 0.5f, 50.0f));
             } else {
                 // Use a smaller value to give faster initial alignment
