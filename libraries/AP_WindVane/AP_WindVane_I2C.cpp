@@ -33,6 +33,7 @@ extern const AP_HAL::HAL& hal;
 AP_WindVane_I2C::AP_WindVane_I2C(AP_WindVane &frontend) :
     AP_WindVane_Backend(frontend)
 {
+    gcs().send_text(MAV_SEVERITY_INFO, "AP_WNDVN_I2C Constructed.");
 }
 
 // init - performs any required initialization for this instance
