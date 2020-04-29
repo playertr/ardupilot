@@ -10,4 +10,4 @@
 # Compile myprogram and launch gdbserver, listening on port 9091
 ssh -L9091:localhost:9091 pi@realtimepi.local bash -c "'
   sudo killall gdbserver &> /dev/null
-  sudo gdbserver :9091 /home/pi/usr/bin/ardurover -A udp:192.168.1.5:14550 -B /dev/ttyAMA0'"
+  sudo gdbserver :9091 /usr/bin/ardurover -A udp:192.168.1.5:14550 -B /dev/ttyAMA0'"
