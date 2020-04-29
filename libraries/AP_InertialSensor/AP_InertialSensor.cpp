@@ -732,16 +732,6 @@ AP_InertialSensor::init(uint16_t sample_rate)
         _gyro_harmonic_notch_filter[i].init(_gyro_raw_sample_rates[i], _calculated_harmonic_notch_freq_hz,
              _harmonic_notch_filter.bandwidth_hz(), _harmonic_notch_filter.attenuation_dB());
     }
-
-    //TIM: test wait_for_sample()
-    uint32_t start = AP_HAL::micros();
-    uint16_t num_samples = 100;
-    for (uint8_t i=0; i<num_samples; i++) {
-        wait_for_sample();
-        update();
-    }
-    uint32_t end = AP_HAL::micros();
-    hal.console->printf("Average IMU period:%d\n", (end - start)/num_samples );
     
 }
 
