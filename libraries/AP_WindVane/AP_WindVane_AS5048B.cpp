@@ -20,7 +20,7 @@
 
 #define I2C_BUS 1
 
-#define RE_ADDRESS          0x40
+#define RE_ADDRESS          0x41
 #define RE_ZEROMSB_REG      0x16  
 // Zero, most significant byte
 #define RE_ZEROLSB_REG      0x17  
@@ -40,6 +40,7 @@ extern const AP_HAL::HAL& hal;
 AP_WindVane_AS5048B::AP_WindVane_AS5048B(AP_WindVane &frontend) :
     AP_WindVane_Backend(frontend)
 {
+    gcs().send_text(MAV_SEVERITY_INFO, "AP_WNDVN_AS5048B Constructed.");
 }
 
 // init - performs any required initialization for this instance
@@ -61,62 +62,52 @@ void AP_WindVane_AS5048B::init()
 
 void AP_WindVane_AS5048B::calibrate()
 {
-    _dev->get_semaphore()->take_blocking();
+    WITH_SEMAPHORE(_sem);
     _dev->set_retries(10);
     // set initial position to zero by setting the zero register to zero,
     // reading the measured angle, and setting the register to this angle.
     int ret = _dev->write_register(RE_ZEROMSB_REG, 0x00);
     if (!ret) {
-        _dev->get_semaphore()->give();
         return;
     }
     ret = _dev->write_register(RE_ZEROLSB_REG, 0x00);
     if (!ret) {
-        _dev->get_semaphore()->give();
         return;
     }
     uint8_t msb = 0;
     ret = _dev->read_registers(RE_ANGLEMSB_REG, &msb, 1);
     if (!ret) {
-        _dev->get_semaphore()->give();
         return;
     }
     uint8_t lsb = 0;
     ret = _dev->read_registers(RE_ANGLELSB_REG, &lsb, 1);
     if (!ret) {
-        _dev->get_semaphore()->give();
         return;
     }
     ret = _dev->write_register(RE_ZEROMSB_REG, msb);
     if (!ret) {
-        _dev->get_semaphore()->give();
         return;
     }
     ret = _dev->write_register(RE_ZEROLSB_REG, lsb);
     if (!ret) {
-        _dev->get_semaphore()->give();
         return;
     }
-    _dev->set_retries(10);
-    _dev->get_semaphore()->give();
+    _dev->set_retries(2);
 }
 
 void AP_WindVane_AS5048B::update_direction()
 {
-    _dev->get_semaphore()->take_blocking();
+    WITH_SEMAPHORE(_sem);
     uint8_t msb = 0;
     int ret = _dev->read_registers(RE_ANGLEMSB_REG, &msb, 1);
     if (!ret) {
-        _dev->get_semaphore()->give();
         return;
     }
     uint8_t lsb = 0;
     ret = _dev->read_registers(RE_ANGLELSB_REG, &lsb, 1);
     if (!ret) {
-        _dev->get_semaphore()->give();
         return;
     }
-    _dev->get_semaphore()->give();
 
     // bit shifting, see https://ams.com/documents/20143/36005/AS5048_DS000298_4-00.pdf p. 25
     uint16_t angle = ((uint16_t) msb << 6) | (lsb & 0x3f);
