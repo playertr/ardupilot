@@ -158,8 +158,8 @@ private:
         WINDVANE_WIND_SENSOR_REV_P   = 2,
         WINDSPEED_RPM                = 3,
         WINDSPEED_NMEA               = 4,
-        WINDSPEED_I2C                 = 5,
-        WINDSPEED_AS5048B        = 6,
+        WINDSPEED_I2C                = 5,
+        WINDSPEED_AS5048B            = 6,
         WINDSPEED_SITL               = 10
     };
 
