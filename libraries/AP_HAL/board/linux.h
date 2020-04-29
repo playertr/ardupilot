@@ -230,31 +230,10 @@
     #define HAL_RCOUT_RGBLED_GREEN    14
     #define HAL_RCOUT_RGBLED_BLUE     15
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXFMINI
-    // #define HAL_INS_PROBE_LIST PROBE_IMU_SPI(Invensense, "mpu9250", ROTATION_YAW_270)
-
     #define HAL_INS_PROBE_LIST PROBE_IMU_I2C(LSM9DS1, 1, 0x6a, ROTATION_PITCH_180) //TIM
-    // This macro expands (probably) in InertialSensor.cpp 
-    
     #define HAL_MAG_PROBE_LIST PROBE_MAG_I2C(LSM9DS1, 1, 0x1c, ROTATION_NONE) //TIM
-    // only external compasses
-
     #define HAL_GPS_TYPE_DEFAULT 2
-
-    // #define HAL_BARO_PROBE_LIST PROBE_BARO_SPI(MS56XX, "ms5611") TIM
     #define HAL_BARO_PROBE_LIST PROBE_BARO_I2C(BMP388, 1, 0x77) // TIM
-    //#define HAL_MAG_PROBE_LIST PROBE_MAG_IMU_I2C(LSM9DS1, LSM9DS1, 1, 0x1c, ROTATION_NONE)
-    
-    /*
-    // Here, we are defining the macro HAL_MAG_PROBE_LIST to expand to 
-    ADD_BACKEND(DRIVER_LSM9DS1, AP_Compass_LSM9DS1::probe_LSM9DS1(GET_I2C_DEVICE(1,0x1c), ROTATION_NONE))
-    // which expands in AP_Compass.cpp to 
-    do { if (_driver_enabled(DRIVER_LSM9DS1)) { _add_backend(AP_Compass_LSM9DS1::probe_LSM9DS1(GET_I2C_DEVICE(1,0x1c), ROTATION_NONE))); } \
-        CHECK_UNREG_LIMIT_RETURN; \
-    } while (0)
-    // I think this will work because DRIVER_LSM9DS1 is defined.
-    */
-
-    #define HAL_PROBE_EXTERNAL_I2C_COMPASSES
     #define HAL_GPIO_A_LED_PIN        24
     #define HAL_GPIO_B_LED_PIN        25
     #define HAL_GPIO_C_LED_PIN        16
