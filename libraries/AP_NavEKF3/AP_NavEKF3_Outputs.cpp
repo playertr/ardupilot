@@ -345,6 +345,8 @@ bool NavEKF3_core::getLLH(struct Location &loc) const
                 return true;
             } else {
                 // if no GPS fix, provide last known position before entering the mode
+                loc.lat = EKF_origin.lat;
+                loc.lng = EKF_origin.lng;
                 loc.offset(lastKnownPositionNE.x, lastKnownPositionNE.y);
                 return false;
             }
@@ -607,10 +609,10 @@ void NavEKF3_core::send_status_report(mavlink_channel_t chan) const
     } else {
         temp = 0.0f;
     }
+    const float mag_max = fmaxf(fmaxf(magVar.x,magVar.y),magVar.z);
 
     // send message
-    mavlink_msg_ekf_status_report_send(chan, flags, velVar, posVar, hgtVar, magVar.length(), temp, tasVar);
-
+    mavlink_msg_ekf_status_report_send(chan, flags, velVar, posVar, hgtVar, mag_max, temp, tasVar);
 }
 
 // report the reason for why the backend is refusing to initialise
@@ -637,3 +639,10 @@ void NavEKF3_core::getOutputTrackingError(Vector3f &error) const
     error = outputTrackError;
 }
 
+bool NavEKF3_core::getDataEKFGSF(float &yaw_composite, float &yaw_composite_variance, float yaw[N_MODELS_EKFGSF], float innov_VN[N_MODELS_EKFGSF], float innov_VE[N_MODELS_EKFGSF], float weight[N_MODELS_EKFGSF])
+{
+    if (yawEstimator != nullptr) {
+        return yawEstimator->getLogData(yaw_composite, yaw_composite_variance, yaw, innov_VN, innov_VE, weight);
+    }
+    return false;
+}

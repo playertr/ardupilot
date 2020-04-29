@@ -59,6 +59,9 @@ class AutoTestCopter(AutoTest):
     def test_filepath(self):
          return os.path.realpath(__file__)
 
+    def set_current_test_name(self, name):
+        self.current_test_name_directory = "ArduCopter_Tests/" + name + "/"
+
     def sitl_start_location(self):
         return SITL_START_LOCATION
 
@@ -1930,6 +1933,7 @@ class AutoTestCopter(AutoTest):
         try:
             self.set_parameter("GPS_TYPE", 0)
             self.set_parameter("EK2_GPS_TYPE", 3)
+            self.set_parameter("VISO_TYPE", 1)
             self.set_parameter("SERIAL5_PROTOCOL", 1)
             self.reboot_sitl()
             # without a GPS or some sort of external prompting, AP
@@ -2588,6 +2592,7 @@ class AutoTestCopter(AutoTest):
 
         ZIGZAG = 24
         j = 0
+        slowdown_speed = 0.3 # because Copter takes a long time to actually stop
         self.start_subtest("Conduct ZigZag test for all 4 directions")
         while j < 4:
             self.progress("## Align heading with the run-way (j=%d)##" % j)
@@ -2601,7 +2606,7 @@ class AutoTestCopter(AutoTest):
             self.set_rc(1, 1700)  # fly side-way for 20m
             self.wait_distance(20)
             self.set_rc(1, 1500)
-            self.wait_groundspeed(0, 0.20)   # wait until the copter slows down
+            self.wait_groundspeed(0, slowdown_speed)   # wait until the copter slows down
             self.progress("## Record Point A ##")
             self.set_rc(8, 1500)    # pilot always have to cross mid position when changing for low to high position
             self.set_rc(8, 1900)    # record point B
@@ -2613,23 +2618,23 @@ class AutoTestCopter(AutoTest):
                 self.set_rc(2, 1300)
                 self.wait_distance(10)
                 self.set_rc(2, 1500)    # re-centre pitch rc control
-                self.wait_groundspeed(0, 0.2)   # wait until the copter slows down
+                self.wait_groundspeed(0, slowdown_speed)   # wait until the copter slows down
                 self.set_rc(8, 1500)    # switch to mid position
                 self.progress("## auto execute vector BA ##")
                 self.set_rc(8, 1100)
                 self.wait_distance(17)  # wait for it to finish
-                self.wait_groundspeed(0, 0.2)   # wait until the copter slows down
+                self.wait_groundspeed(0, slowdown_speed)   # wait until the copter slows down
 
                 self.progress("## fly forward for 10 meter ##")
                 self.set_rc(2, 1300)    # fly forward for 10 meter
                 self.wait_distance(10)
                 self.set_rc(2, 1500)    # re-centre pitch rc control
-                self.wait_groundspeed(0, 0.2)   # wait until the copter slows down
+                self.wait_groundspeed(0, slowdown_speed)   # wait until the copter slows down
                 self.set_rc(8, 1500)    # switch to mid position
                 self.progress("## auto execute vector AB ##")
                 self.set_rc(8, 1900)
                 self.wait_distance(17)  # wait for it to finish
-                self.wait_groundspeed(0, 0.2)   # wait until the copter slows down
+                self.wait_groundspeed(0, slowdown_speed)   # wait until the copter slows down
                 i=i+1
             # test the case when pilot switch to manual control during the auto flight
             self.start_subtest("test the case when pilot switch to manual control during the auto flight")
@@ -2643,21 +2648,21 @@ class AutoTestCopter(AutoTest):
             self.set_rc(8, 1100)    # switch to low position, auto execute vector BA
             self.wait_distance(8)   # purposely switch to manual halfway
             self.set_rc(8, 1500)
-            self.wait_groundspeed(0, 0.2)   # copter should slow down here
+            self.wait_groundspeed(0, slowdown_speed)   # copter should slow down here
             self.progress("## Manual control to fly forward ##")
             self.set_rc(2, 1300)    # manual control to fly forward
             self.wait_distance(8)
             self.set_rc(2, 1500)    # re-centre pitch rc control
-            self.wait_groundspeed(0, 0.2)   # wait until the copter slows down
+            self.wait_groundspeed(0, slowdown_speed)   # wait until the copter slows down
             self.progress("## continue vector BA ##")
             self.set_rc(8, 1100)    # copter should continue mission here
             self.wait_distance(8)   # wait for it to finish rest of BA
-            self.wait_groundspeed(0, 0.2)   #wait until the copter slows down
+            self.wait_groundspeed(0, slowdown_speed)   #wait until the copter slows down
             self.set_rc(8, 1500)    # switch to mid position
             self.progress("## auto execute vector AB ##")
             self.set_rc(8, 1900)    # switch to execute AB again
             self.wait_distance(17)  # wait for it to finish
-            self.wait_groundspeed(0, 0.2)   # wait until the copter slows down
+            self.wait_groundspeed(0, slowdown_speed)   # wait until the copter slows down
             self.change_mode('LOITER')
             j=j+1
 
@@ -2972,7 +2977,7 @@ class AutoTestCopter(AutoTest):
 #        print('r=%f p=%f y=%f' % (m.roll, m.pitch, m.yaw))
         return vector - x
 
-    def loiter_to_ne(self, x, y, z, timeout=30):
+    def loiter_to_ne(self, x, y, z, timeout=40):
         dest = rotmat.Vector3(x, y, z)
         tstart = self.get_sim_time()
         while True:
@@ -3652,32 +3657,91 @@ class AutoTestCopter(AutoTest):
                                        (tdelta, max_good_tdelta))
         self.progress("Vehicle returned")
 
-    def fly_dynamic_notches(self):
-        self.progress("Flying with dynamic notches")
-        # magic tridge EKF type that dramatically speeds up the test
-        self.set_parameter("AHRS_EKF_TYPE", 10)
-        self.set_parameter("INS_HNTCH_ENABLE", 1)
-        self.set_parameter("INS_HNTCH_FREQ", 80)
-        self.set_parameter("INS_HNTCH_REF", 0.35)
-        # first and third harmonic
-        self.set_parameter("INS_HNTCH_HMNCS", 5)
-        self.set_parameter("INS_NOTCH_ENABLE", 1)
-        self.set_parameter("INS_NOTCH_FREQ", 90)
-        self.reboot_sitl()
+    def hover_and_check_matched_frequency_with_fft(self, dblevel=-15, minhz=200, maxhz=300, peakhz=None, reverse=None):
+        # find a motor peak
+        self.takeoff(10, mode="ALT_HOLD")
 
-        self.set_parameter("SIM_GYR_RND", 10)
-
-        self.takeoff(10, mode="LOITER")
-
-        self.change_mode("ALT_HOLD")
-        # fly fast forrest!
-        self.set_rc(3, 1900)
-        self.set_rc(2, 1200)
-        self.wait_groundspeed(5, 1000)
-        self.set_rc(3, 1500)
-        self.set_rc(2, 1500)
+        hover_time = 15
+        tstart = self.get_sim_time()
+        self.progress("Hovering for %u seconds" % hover_time)
+        while self.get_sim_time_cached() < tstart + hover_time:
+            attitude = self.mav.recv_match(type='ATTITUDE', blocking=True)
+        vfr_hud = self.mav.recv_match(type='VFR_HUD', blocking=True)
+        tend = self.get_sim_time()
 
         self.do_RTL()
+        psd = self.mavfft_fttd(1, 0, tstart * 1.0e6, tend * 1.0e6)
+
+        # batch sampler defaults give 1024 fft and sample rate of 1kz so roughly 1hz/bin
+        freq = psd["F"][numpy.argmax(psd["X"][minhz:maxhz]) + minhz] * (1000. / 1024.)
+        peakdb = numpy.amax(psd["X"][minhz:maxhz])
+        if peakdb < dblevel or (peakhz is not None and abs(freq - peakhz) / peakhz > 0.05):
+            if reverse is not None:
+                self.progress("Did not detect a motor peak, found %fHz at %fdB" % (freq, peakdb))
+            else:
+                raise NotAchievedException("Did not detect a motor peak, found %fHz at %fdB" % (freq, peakdb))
+        else:
+            if reverse is not None:
+                raise NotAchievedException("Detected motor peak at %fHz, throttle %f%%, %fdB" % (freq, vfr_hud.throttle, peakdb))
+            else:
+                self.progress("Detected motor peak at %fHz, throttle %f%%, %fdB" % (freq, vfr_hud.throttle, peakdb))
+
+        return freq, vfr_hud, peakdb
+
+    def fly_dynamic_notches(self):
+        """Use dynamic harmonic notch to control motor noise."""
+        self.progress("Flying with dynamic notches")
+        self.context_push()
+
+        ex = None
+        try:
+            self.set_rc_default()
+            self.set_parameter("AHRS_EKF_TYPE", 10)
+            self.set_parameter("INS_LOG_BAT_MASK", 3)
+            self.set_parameter("INS_LOG_BAT_OPT", 0)
+            # set the gyro filter high so we can observe behaviour
+            self.set_parameter("INS_GYRO_FILTER", 100)
+            self.set_parameter("LOG_BITMASK", 958)
+            self.set_parameter("LOG_DISARMED", 0)
+            self.set_parameter("SIM_VIB_MOT_MAX", 350)
+            self.set_parameter("SIM_GYR_RND", 20)
+            self.reboot_sitl()
+
+            self.takeoff(10, mode="ALT_HOLD")
+
+            # find a motor peak
+            freq, vfr_hud, peakdb = self.hover_and_check_matched_frequency_with_fft(-15, 200, 300)
+
+            # now add a dynamic notch and check that the peak is squashed
+            self.set_parameter("INS_LOG_BAT_OPT", 2)
+            self.set_parameter("INS_HNTCH_ENABLE", 1)
+            self.set_parameter("INS_HNTCH_FREQ", freq)
+            self.set_parameter("INS_HNTCH_REF", vfr_hud.throttle/100.)
+            # first and third harmonic
+            self.set_parameter("INS_HNTCH_HMNCS", 5)
+            self.set_parameter("INS_HNTCH_ATT", 50)
+            self.set_parameter("INS_HNTCH_BW", freq/2)
+            self.reboot_sitl()
+
+            freq, vfr_hud, peakdb1 = self.hover_and_check_matched_frequency_with_fft(-10, 20, 350, reverse=True)
+
+            # now add double dynamic notches and check that the peak is squashed
+            self.set_parameter("INS_HNTCH_OPTS", 1)
+            self.reboot_sitl()
+
+            freq, vfr_hud, peakdb2 = self.hover_and_check_matched_frequency_with_fft(-15, 20, 350, reverse=True)
+
+            # double-notch should do better
+            if peakdb2 > peakdb1:
+                raise NotAchievedException("Double-notch peak was higher than single-notch peak %fdB < %fdB" % (peakdb2, peakdb1))
+
+        except Exception as e:
+            ex = e
+
+        self.context_pop()
+
+        if ex is not None:
+            raise ex
 
     def hover_and_check_matched_frequency(self, dblevel=-15, minhz=200, maxhz=300, fftLength=32, peakhz=None):
         # find a motor peak
@@ -4628,6 +4692,49 @@ class AutoTestCopter(AutoTest):
         if not self.current_onboard_log_contains_message("RFND"):
             raise NotAchievedException("No RFND messages in log")
 
+    def fly_rangefinder_mavlink(self):
+        # explicit test for the mavlink driver as it doesn't play so nice:
+        self.set_parameter("SERIAL5_PROTOCOL", 1)
+        self.set_parameter("RNGFND1_TYPE", 10)
+        self.customise_SITL_commandline(['--uartF=sim:rf_mavlink'])
+
+        self.change_mode('GUIDED')
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        expected_alt = 5
+        self.user_takeoff(alt_min=expected_alt)
+
+        tstart = self.get_sim_time()
+        while True:
+            if self.get_sim_time() - tstart > 5:
+                raise NotAchievedException("Mavlink rangefinder not working")
+            rf = self.mav.recv_match(type="RANGEFINDER", timeout=1, blocking=True)
+            if rf is None:
+                raise NotAchievedException("Did not receive rangefinder message")
+            gpi = self.mav.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=1)
+            if gpi is None:
+                raise NotAchievedException("Did not receive GLOBAL_POSITION_INT message")
+            if abs(rf.distance - gpi.relative_alt/1000.0) > 1:
+                success = False
+                print("rangefinder alt (%s) disagrees with global-position-int.relative_alt (%s)" % (rf.distance, gpi.relative_alt/1000.0))
+                continue
+
+            ds = self.mav.recv_match(
+                type="DISTANCE_SENSOR",
+                timeout=2,
+                blocking=True,
+            )
+            if ds is None:
+                raise NotAchievedException("Did not receive DISTANCE_SENSOR message")
+            self.progress("Got: %s" % str(ds))
+            if abs(ds.current_distance/100.0 - gpi.relative_alt/1000.0) > 1:
+                print(
+                    "distance sensor.current_distance (%f) disagrees with global-position-int.relative_alt (%s)" %
+                    (ds.current_distance/100.0, gpi.relative_alt/1000.0))
+                continue
+            break
+        self.progress("mavlink rangefinder OK")
+        self.land_and_disarm()
 
     def fly_rangefinder_drivers(self):
         self.set_parameter("RTL_ALT", 500)
@@ -4662,6 +4769,9 @@ class AutoTestCopter(AutoTest):
                     self.set_parameter("RNGFND%u_TYPE" % (offs+1), rngfnd_param_value)
             self.customise_SITL_commandline(command_line_args)
             self.fly_rangefinder_drivers_fly([x[0] for x in do_drivers])
+
+        self.fly_rangefinder_mavlink()
+
 
     def test_parameter_validation(self):
         self.progress("invalid; min must be less than max:")

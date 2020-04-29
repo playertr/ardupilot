@@ -54,8 +54,8 @@ void AP_Mission::init()
 
     // If Mission Clear bit is set then it should clear the mission, otherwise retain the mission.
     if (AP_MISSION_MASK_MISSION_CLEAR & _options) {
-    	gcs().send_text(MAV_SEVERITY_INFO, "Clearing Mission");
-    	clear();	
+        gcs().send_text(MAV_SEVERITY_INFO, "Clearing Mission");
+        clear();    
     }
 
     _last_change_time_ms = AP_HAL::millis();
@@ -941,6 +941,7 @@ MAV_MISSION_RESULT AP_Mission::mavlink_int_to_mission_cmd(const mavlink_mission_
 
     case MAV_CMD_DO_SET_CAM_TRIGG_DIST:                 // MAV ID: 206
         cmd.content.cam_trigg_dist.meters = packet.param1;  // distance between camera shots in meters
+        cmd.content.cam_trigg_dist.trigger = packet.param3; // when enabled, camera triggers once immediately
         break;
 
     case MAV_CMD_DO_FENCE_ENABLE:                       // MAV ID: 207
@@ -1380,6 +1381,7 @@ bool AP_Mission::mission_cmd_to_mavlink_int(const AP_Mission::Mission_Command& c
 
     case MAV_CMD_DO_SET_CAM_TRIGG_DIST:                 // MAV ID: 206
         packet.param1 = cmd.content.cam_trigg_dist.meters;  // distance between camera shots in meters
+        packet.param3 = cmd.content.cam_trigg_dist.trigger; // when enabled, camera triggers once immediately
         break;
 
     case MAV_CMD_DO_FENCE_ENABLE:                       // MAV ID: 207

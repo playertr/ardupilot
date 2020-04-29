@@ -754,6 +754,9 @@ bool QuadPlane::setup(void)
 
     AP_Param::convert_old_parameters(&q_conversion_table[0], ARRAY_SIZE(q_conversion_table));
 
+    // param count will have changed
+    AP_Param::invalidate_count();
+
     gcs().send_text(MAV_SEVERITY_INFO, "QuadPlane initialised");
     initialised = true;
     return true;
@@ -1128,6 +1131,9 @@ void QuadPlane::init_qland(void)
     last_land_final_agl = plane.relative_ground_altitude(plane.g.rangefinder_landing);
     landing_detect.lower_limit_start_ms = 0;
     landing_detect.land_start_ms = 0;
+#if LANDING_GEAR_ENABLED == ENABLED
+    plane.g2.landing_gear.deploy_for_landing();
+#endif
 }
 
 
@@ -1305,6 +1311,10 @@ float QuadPlane::get_pilot_input_yaw_rate_cds(void) const
     if (plane.get_throttle_input() <= 0 && !plane.auto_throttle_mode &&
         plane.arming.get_rudder_arming_type() != AP_Arming::RudderArming::IS_DISABLED) {
         // the user may be trying to disarm
+        return 0;
+    }
+
+    if (plane.g.stick_mixing == STICK_MIXING_DISABLED) {
         return 0;
     }
 
@@ -1695,13 +1705,17 @@ void QuadPlane::update_transition(void)
         // in half the transition time
         float transition_rate = tailsitter.transition_angle / float(transition_time_ms/2);
         uint32_t dt = now - transition_start_ms;
-        plane.nav_pitch_cd = constrain_float((-transition_rate * dt)*100, -8500, 0);
+        float pitch_cd;
+        pitch_cd = constrain_float((-transition_rate * dt)*100, -8500, 0);
+        // if already pitched forward at start of transition, wait until curve catches up
+        plane.nav_pitch_cd = (pitch_cd > transition_initial_pitch)? transition_initial_pitch : pitch_cd;
         plane.nav_roll_cd = 0;
         check_attitude_relax();
         attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(plane.nav_roll_cd,
                                                                       plane.nav_pitch_cd,
                                                                       0);
-        attitude_control->set_throttle_out(motors->get_throttle_hover(), true, 0);
+        // set throttle at either hover throttle or current throttle, whichever is higher, through the transition
+        attitude_control->set_throttle_out(MAX(motors->get_throttle_hover(),motors->get_throttle()), true, 0);
         break;
     }
 
@@ -1809,6 +1823,7 @@ void QuadPlane::update(void)
                  */
                 transition_state = TRANSITION_ANGLE_WAIT_FW;
                 transition_start_ms = now;
+                transition_initial_pitch= constrain_float(ahrs_view->pitch_sensor,-8500,0);
             } else {
                 /*
                   setup for airspeed wait for later
@@ -2243,7 +2258,7 @@ void QuadPlane::vtol_position_controller(void)
         pos_control->set_desired_accel_xy(0.0f,0.0f);
 
         // run horizontal velocity controller
-        pos_control->update_vel_controller_xy();
+        pos_control->update_xy_controller();
 
         // nav roll and pitch are controller by position controller
         plane.nav_roll_cd = pos_control->get_roll();
@@ -2773,6 +2788,9 @@ bool QuadPlane::verify_vtol_land(void)
     if (poscontrol.state == QPOS_POSITION2 &&
         plane.auto_state.wp_distance < 2) {
         poscontrol.state = QPOS_LAND_DESCEND;
+#if LANDING_GEAR_ENABLED == ENABLED
+        plane.g2.landing_gear.deploy_for_landing();
+#endif
         last_land_final_agl = plane.relative_ground_altitude(plane.g.rangefinder_landing);
         gcs().send_text(MAV_SEVERITY_INFO,"Land descend started");
         if (plane.control_mode == &plane.mode_auto) {
@@ -2824,7 +2842,7 @@ void QuadPlane::Log_Write_QControl_Tuning()
         target_climb_rate   : target_climb_rate_cms,
         climb_rate          : int16_t(inertial_nav.get_velocity_z()),
         throttle_mix        : attitude_control->get_throttle_mix(),
-        speed_scaler         : last_spd_scaler,
+        speed_scaler        : last_spd_scaler,
     };
     plane.logger.WriteBlock(&pkt, sizeof(pkt));
 

@@ -1117,9 +1117,10 @@ void AP_Periph_FW::hwesc_telem_update()
     pkt.esc_index = g.esc_number;
     pkt.voltage = t.voltage;
     pkt.current = t.current;
-    pkt.temperature = t.temperature;
+    pkt.temperature = MAX(t.mos_temperature, t.cap_temperature);
     pkt.rpm = t.rpm;
     pkt.power_rating_pct = t.phase_current;
+    pkt.error_count = t.error_count;
 
     fix_float16(pkt.voltage);
     fix_float16(pkt.current);
@@ -1244,7 +1245,11 @@ void AP_Periph_FW::can_gps_update(void)
 
         pkt.timestamp.usec = AP_HAL::micros64();
         pkt.gnss_timestamp.usec = gps.time_epoch_usec();
-        pkt.gnss_time_standard = UAVCAN_EQUIPMENT_GNSS_FIX_GNSS_TIME_STANDARD_UTC;
+        if (pkt.gnss_timestamp.usec == 0) {
+            pkt.gnss_time_standard = UAVCAN_EQUIPMENT_GNSS_FIX_GNSS_TIME_STANDARD_NONE;
+        } else {
+            pkt.gnss_time_standard = UAVCAN_EQUIPMENT_GNSS_FIX_GNSS_TIME_STANDARD_UTC;
+        }
         pkt.longitude_deg_1e8 = uint64_t(loc.lng) * 10ULL;
         pkt.latitude_deg_1e8 = uint64_t(loc.lat) * 10ULL;
         pkt.height_ellipsoid_mm = loc.alt * 10;
@@ -1323,7 +1328,11 @@ void AP_Periph_FW::can_gps_update(void)
 
         pkt.timestamp.usec = AP_HAL::micros64();
         pkt.gnss_timestamp.usec = gps.time_epoch_usec();
-        pkt.gnss_time_standard = UAVCAN_EQUIPMENT_GNSS_FIX2_GNSS_TIME_STANDARD_UTC;
+        if (pkt.gnss_timestamp.usec == 0) {
+            pkt.gnss_time_standard = UAVCAN_EQUIPMENT_GNSS_FIX_GNSS_TIME_STANDARD_NONE;
+        } else {
+            pkt.gnss_time_standard = UAVCAN_EQUIPMENT_GNSS_FIX_GNSS_TIME_STANDARD_UTC;
+        }
         pkt.longitude_deg_1e8 = uint64_t(loc.lng) * 10ULL;
         pkt.latitude_deg_1e8 = uint64_t(loc.lat) * 10ULL;
         pkt.height_ellipsoid_mm = loc.alt * 10;

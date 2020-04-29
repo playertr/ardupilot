@@ -349,7 +349,11 @@ void AP_Logger_Backend::validate_WritePrioritisedBlock(const void *pBuffer,
     }
     if (type_len != size) {
         char name[5] = {}; // get a null-terminated string
-        memcpy(name, s->name, 4);
+        if (s->name != nullptr) {
+            memcpy(name, s->name, 4);
+        } else {
+            strncpy(name, "?NM?", ARRAY_SIZE(name));
+        }
         AP_HAL::panic("Size mismatch for %u (%s) (expected=%u got=%u)\n",
                       type, name, type_len, size);
     }
@@ -436,9 +440,8 @@ bool AP_Logger_Backend::Write_RallyPoint(uint8_t total,
 }
 
 // Write rally points
-void AP_Logger_Backend::Write_Rally()
+bool AP_Logger_Backend::Write_Rally()
 {
-    LoggerMessageWriter_WriteAllRallyPoints writer;
-    writer.set_logger_backend(this);
-    writer.process();
+    // kick off asynchronous write:
+    return _startup_messagewriter->writeallrallypoints();
 }
