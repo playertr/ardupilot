@@ -39,6 +39,7 @@ private:
     // latest values read in
     float _wind_dir_deg;
 
+    HAL_Semaphore _sem;
     // pointer to I2C device
     AP_HAL::OwnPtr<AP_HAL::I2CDevice> _dev = nullptr;
 };
