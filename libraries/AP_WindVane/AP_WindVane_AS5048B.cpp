@@ -40,12 +40,13 @@ extern const AP_HAL::HAL& hal;
 AP_WindVane_AS5048B::AP_WindVane_AS5048B(AP_WindVane &frontend) :
     AP_WindVane_Backend(frontend)
 {
-    gcs().send_text(MAV_SEVERITY_INFO, "AP_WNDVN_AS5048B Constructed.");
+    gcs().send_text(MAV_SEVERITY_INFO, "AP_WNDVN_AS5048B Constructed.");   
 }
 
 // init - performs any required initialization for this instance
 void AP_WindVane_AS5048B::init()
-{
+{   
+
     _dev = hal.i2c_mgr->get_device(I2C_BUS, RE_ADDRESS);
     if (!_dev) {
         hal.console->printf("No AP_WindVane_AS5048B found.");
@@ -55,14 +56,16 @@ void AP_WindVane_AS5048B::init()
     hal.console->printf("AP_WindVane_AS5048B: Found on bus %u address 0x%02x",
                         I2C_BUS, RE_ADDRESS);
 
-
+    if(!_dev->get_semaphore()->take(0)){
+        return;
+    }
     calibrate();
+    _dev->get_semaphore()->give();
 
 }
 
 void AP_WindVane_AS5048B::calibrate()
 {
-    WITH_SEMAPHORE(_sem);
     _dev->set_retries(10);
     // set initial position to zero by setting the zero register to zero,
     // reading the measured angle, and setting the register to this angle.
@@ -97,7 +100,10 @@ void AP_WindVane_AS5048B::calibrate()
 
 void AP_WindVane_AS5048B::update_direction()
 {
-    WITH_SEMAPHORE(_sem);
+    if(!_dev->get_semaphore()->take(0)){
+        return;
+    }
+
     uint8_t msb = 0;
     int ret = _dev->read_registers(RE_ANGLEMSB_REG, &msb, 1);
     if (!ret) {
@@ -118,5 +124,5 @@ void AP_WindVane_AS5048B::update_direction()
         direction_update_frontend(wrap_PI(radians(_wind_dir_deg + _frontend._dir_analog_bearing_offset.get()) + AP::ahrs().yaw));
     }
 
-
+    _dev->get_semaphore()->give();
 }
