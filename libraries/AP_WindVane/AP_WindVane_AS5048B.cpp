@@ -56,7 +56,7 @@ void AP_WindVane_AS5048B::init()
     hal.console->printf("AP_WindVane_AS5048B: Found on bus %u address 0x%02x",
                         I2C_BUS, RE_ADDRESS);
 
-    if(!_dev->get_semaphore()->take(0)){
+    if(!_dev->get_semaphore()->take(10)){
         return;
     }
     calibrate();
@@ -100,7 +100,7 @@ void AP_WindVane_AS5048B::calibrate()
 
 void AP_WindVane_AS5048B::update_direction()
 {
-    if(!_dev->get_semaphore()->take(0)){
+    if(!_dev->get_semaphore()->take(2)){
         return;
     }
 
