@@ -41,7 +41,8 @@ void AP_WindVane_ModernDevice::update_speed()
             // pin invalid, don't have health monitoring to report yet
             return;
         }
-        analog_voltage = _temp_analog_source->voltage_average();
+        analog_voltage = _temp_analog_source->voltage_average();\
+        // gcs().send_text(MAV_SEVERITY_INFO, "Temp Voltage (Pin %u): %.2f", (uint8_t) _frontend._speed_sensor_temp_pin.get(), (float) analog_voltage);
         temp_ambient = (analog_voltage - 0.4f) / 0.0195f; // deg C
         // constrain to reasonable range to avoid deviating from calibration too much and potential divide by zero
         temp_ambient = constrain_float(temp_ambient, 10.0f, 40.0f);
@@ -56,12 +57,17 @@ void AP_WindVane_ModernDevice::update_speed()
     // apply voltage offset and make sure not negative
     // by default the voltage offset is the number provide by the manufacturer
     analog_voltage = _current_analog_voltage - _frontend._speed_sensor_voltage_offset;
+    // gcs().send_text(MAV_SEVERITY_INFO, "Speed sensor voltage offset: %.2f", (float) _frontend._speed_sensor_voltage_offset);
+
+    // gcs().send_text(MAV_SEVERITY_INFO, "Speed Voltage (Pin %u): %.2f", _frontend._speed_sensor_speed_pin.get(), analog_voltage);
     if (is_negative(analog_voltage)) {
         analog_voltage = 0.0f;
     }
 
     // simplified equation from data sheet, converted from mph to m/s
     _frontend._speed_apparent_raw  = 24.254896f * powf((analog_voltage / powf(temp_ambient, 0.115157f)), 3.009364f);
+
+    // gcs().send_text(MAV_SEVERITY_INFO, "Set speed to: %.2f", _frontend._speed_apparent_raw);
 }
 
 void AP_WindVane_ModernDevice::calibrate()

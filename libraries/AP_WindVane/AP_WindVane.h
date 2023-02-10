@@ -41,6 +41,7 @@ class AP_WindVane
     friend class AP_WindVane_Airspeed;
     friend class AP_WindVane_RPM;
     friend class AP_WindVane_NMEA;
+    friend class AP_WindVane_AS5600;
 
 public:
     AP_WindVane();
@@ -166,6 +167,7 @@ private:
         WINDVANE_PWM_PIN        = 2,
         WINDVANE_ANALOG_PIN     = 3,
         WINDVANE_NMEA           = 4,
+        WINDVANE_AS5600        = 5,
         WINDVANE_SITL_TRUE      = 10,
         WINDVANE_SITL_APPARENT  = 11,
     };

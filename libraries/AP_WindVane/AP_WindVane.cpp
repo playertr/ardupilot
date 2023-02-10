@@ -22,6 +22,7 @@
 #include "AP_WindVane_RPM.h"
 #include "AP_WindVane_SITL.h"
 #include "AP_WindVane_NMEA.h"
+#include "AP_WindVane_AS5600.h"
 
 #include <GCS_MAVLink/GCS.h>
 #include <AP_AHRS/AP_AHRS.h>
@@ -36,7 +37,7 @@ const AP_Param::GroupInfo AP_WindVane::var_info[] = {
     // @Param: TYPE
     // @DisplayName: Wind Vane Type
     // @Description: Wind Vane type
-    // @Values: 0:None,1:Heading when armed,2:RC input offset heading when armed,3:Analog,4:NMEA,10:SITL true,11:SITL apparent
+    // @Values: 0:None,1:Heading when armed,2:RC input offset heading when armed,3:Analog,4:NMEA,5:AS5600,10:SITL true,11:SITL apparent
     // @User: Standard
     // @RebootRequired: True
     AP_GROUPINFO_FLAGS("TYPE", 1, AP_WindVane, _direction_type, 0, AP_PARAM_FLAG_ENABLE),
@@ -197,6 +198,8 @@ void AP_WindVane::init(const AP_SerialManager& serial_manager)
         return;
     }
 
+    gcs().send_text(MAV_SEVERITY_ALERT, "WindVane: got _direction type %u", (unsigned int) _direction_type);
+
     // wind direction
     switch (_direction_type) {
         case WindVaneType::WINDVANE_NONE:
@@ -218,6 +221,10 @@ void AP_WindVane::init(const AP_SerialManager& serial_manager)
         case WindVaneType::WINDVANE_NMEA:
             _direction_driver = new AP_WindVane_NMEA(*this);
             _direction_driver->init(serial_manager);
+            break;
+        case WindVaneType::WINDVANE_AS5600:
+            _direction_driver = new AP_WindVane_AS5600(*this);
+            _direction_driver->init();
             break;
     }
 

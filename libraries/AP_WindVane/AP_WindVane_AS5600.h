@@ -14,29 +14,36 @@
  */
 #pragma once
 
-#include "AP_WindVane.h"
+#include "AP_WindVane_Backend.h"
+#include <AP_HAL/I2CDevice.h>
 
-class AP_WindVane_Backend
+class AP_WindVane_AS5600 : public AP_WindVane_Backend
 {
+    
 public:
-    // constructor. This incorporates initialization as well.
-    AP_WindVane_Backend(AP_WindVane &frontend);
-
-    // we declare a virtual destructor so that WindVane drivers can
-    // override with a custom destructor if need be
-    virtual ~AP_WindVane_Backend() {}
+    // constructor
+    using AP_WindVane_Backend::AP_WindVane_Backend;
+    ~AP_WindVane_AS5600(void) {}
 
     // initialization
-    virtual void init(const AP_SerialManager& serial_manager) {};
-    virtual void init() {};
+    void init() override;
 
-    // update the state structure
-    virtual void update_speed() {};
-    virtual void update_direction() {};
-    virtual void calibrate();
+    // update state
+    void update_direction() override;
 
-protected:
+    void calibrate() override;
 
-    AP_WindVane &_frontend;
+private:
 
+    uint16_t readRawAngle();
+
+    bool setPowerMode(uint8_t powerMode);
+
+    uint16_t _raw_angle_offset = 0;
+
+    // latest values read in
+    float _wind_dir_rad;
+
+    // pointer to I2C device
+    AP_HAL::OwnPtr<AP_HAL::I2CDevice> _dev = nullptr;
 };
