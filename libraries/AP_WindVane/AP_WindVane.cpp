@@ -231,11 +231,14 @@ void AP_WindVane::init(const AP_SerialManager& serial_manager)
             _direction_driver = NEW_NOTHROW AP_WindVane_NMEA(*this);
             _direction_driver->init(serial_manager);
             break;
+#endif
+#if AP_WINDVANE_AS5600_ENABLED
         case WindVaneType::WINDVANE_AS5600:
             _direction_driver = new AP_WindVane_AS5600(*this);
             _direction_driver->init();
             break;
     }
+#endif
 
     // wind speed
     switch (_speed_sensor_type) {
