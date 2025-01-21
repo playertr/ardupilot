@@ -12,18 +12,26 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-/* 
+/*
 	Simulator connector for Airsim: https://github.com/Microsoft/AirSim
 */
 
 #pragma once
 
-#include <AP_HAL/utility/Socket.h>
+#include <AP_HAL/AP_HAL_Boards.h>
+
+#ifndef HAL_SIM_AIRSIM_ENABLED
+#define HAL_SIM_AIRSIM_ENABLED (CONFIG_HAL_BOARD == HAL_BOARD_SITL)
+#endif
+
+#if HAL_SIM_AIRSIM_ENABLED
+
+#include <AP_HAL/utility/Socket_native.h>
 #include "SIM_Aircraft.h"
 
 namespace SITL {
 
-/* 
+/*
 	Airsim Simulator
 */
 
@@ -36,7 +44,7 @@ public:
 
 	/* static object creator */
     static Aircraft *create(const char *frame_str) {
-        return new AirSim(frame_str);
+        return NEW_NOTHROW AirSim(frame_str);
     }
 
     /*  Create and set in/out socket for Airsim simulator */
@@ -70,16 +78,19 @@ private:
 	// connection_info_.sitl_ip_port
 	uint16_t airsim_control_port = 9002;
 
-	SocketAPM sock;
+    SocketAPM_native sock;
 
     double average_frame_time;
     uint64_t frame_counter;
     uint64_t last_frame_count;
     uint64_t last_timestamp;
 
-    void output_copter(const struct sitl_input &input);
-    void output_rover(const struct sitl_input &input);
-    void recv_fdm();
+    void output_copter(const sitl_input& input);
+    void output_rover(const sitl_input& input);
+    // Wrapper function over the above 2 output methods
+    void output_servos(const sitl_input& input);
+
+    void recv_fdm(const sitl_input& input);
     void report_FPS(void);
 
 	bool parse_sensors(const char *json);
@@ -118,6 +129,9 @@ private:
         struct {
             struct float_array rc_channels;
         } rc;
+        struct {
+            struct float_array rng_distances;
+        } rng;
     } state;
 
     // table to aid parsing of JSON sensor data
@@ -126,7 +140,7 @@ private:
         const char *key;
         void *ptr;
         enum data_type type;
-    } keytable[12] = {
+    } keytable[13] = {
         { "", "timestamp", &state.timestamp, DATA_UINT64 },
         { "imu", "angular_velocity",    &state.imu.angular_velocity, DATA_VECTOR3F },
         { "imu", "linear_acceleration", &state.imu.linear_acceleration, DATA_VECTOR3F },
@@ -139,7 +153,10 @@ private:
         { "velocity", "world_linear_velocity", &state.velocity.world_linear_velocity, DATA_VECTOR3F },
         { "lidar", "point_cloud", &state.lidar.points, DATA_VECTOR3F_ARRAY },
         { "rc", "channels", &state.rc.rc_channels, DATA_FLOAT_ARRAY },
+        { "rng", "distances", &state.rng.rng_distances, DATA_FLOAT_ARRAY },
     };
 };
 
 }
+
+#endif  // HAL_SIM_AIRSIM_ENABLED

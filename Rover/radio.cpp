@@ -6,9 +6,10 @@
 void Rover::set_control_channels(void)
 {
     // check change on RCMAP
-    channel_steer    = rc().channel(rcmap.roll()-1);
-    channel_throttle = rc().channel(rcmap.throttle()-1);
-    channel_lateral  = rc().channel(rcmap.yaw()-1);
+    // the library gaurantees that these are non-nullptr:
+    channel_steer    = &rc().get_roll_channel();
+    channel_throttle = &rc().get_throttle_channel();
+    channel_lateral  = &rc().get_yaw_channel();
 
     // set rc channel ranges
     channel_steer->set_angle(SERVO_MAX);
@@ -16,6 +17,23 @@ void Rover::set_control_channels(void)
     if (channel_lateral != nullptr) {
         channel_lateral->set_angle(100);
     }
+
+    // walking robots rc input init
+    channel_roll = rc().find_channel_for_option(RC_Channel::AUX_FUNC::ROLL);
+    channel_pitch = rc().find_channel_for_option(RC_Channel::AUX_FUNC::PITCH);
+    channel_walking_height = rc().find_channel_for_option(RC_Channel::AUX_FUNC::WALKING_HEIGHT);
+    if (channel_roll != nullptr) {
+        channel_roll->set_angle(SERVO_MAX);
+        channel_roll->set_default_dead_zone(30);
+    }
+    if (channel_pitch != nullptr) {
+        channel_pitch->set_angle(SERVO_MAX);
+        channel_pitch->set_default_dead_zone(30);
+    }
+    if (channel_walking_height != nullptr) {
+        channel_walking_height->set_angle(SERVO_MAX);
+        channel_walking_height->set_default_dead_zone(30);
+    }    
 
     // sailboat rc input init
     g2.sailboat.init_rc_in();
@@ -135,23 +153,6 @@ void Rover::radio_failsafe_check(uint16_t pwm)
     if (AP_HAL::millis() - failsafe.last_valid_rc_ms > 500) {
         failed = true;
     }
+    AP_Notify::flags.failsafe_radio = failed;
     failsafe_trigger(FAILSAFE_EVENT_THROTTLE, "Radio", failed);
-}
-
-bool Rover::trim_radio()
-{
-    if (!rc().has_valid_input()) {
-        // can't trim without valid input
-        return false;
-    }
-
-    // Store control surface trim values
-    // ---------------------------------
-    if ((channel_steer->get_radio_in() > 1400) && (channel_steer->get_radio_in() < 1600)) {
-        channel_steer->set_and_save_radio_trim(channel_steer->get_radio_in());
-    } else {
-        return false;
-    }
-
-    return true;
 }

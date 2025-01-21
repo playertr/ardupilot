@@ -22,6 +22,8 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <type_traits>
+#include <new>
 
 // used to pack structures
 #define PACKED __attribute__((__packed__))
@@ -32,17 +34,29 @@
 // used to mark a function that may be unused in some builds
 #define UNUSED_FUNCTION __attribute__((unused))
 
+// used to mark an attribute that may be unused in some builds
+#ifdef __clang__
+#define UNUSED_PRIVATE_MEMBER __attribute__((unused))
+#else
+#define UNUSED_PRIVATE_MEMBER
+#endif
+
 // this can be used to optimize individual functions
 #define OPTIMIZE(level) __attribute__((optimize(level)))
 
 // sometimes we need to prevent inlining to prevent large stack usage
+#ifndef NOINLINE
 #define NOINLINE __attribute__((noinline))
+#endif
 
 // used to ignore results for functions marked as warn unused
 #define IGNORE_RETURN(x) do {if (x) {}} while(0)
 
 #define FMT_PRINTF(a,b) __attribute__((format(printf, a, b)))
 #define FMT_SCANF(a,b) __attribute__((format(scanf, a, b)))
+
+// used to forbid copy of objects
+#define CLASS_NO_COPY(c) c(const c &other) = delete; c &operator=(const c&) = delete
 
 #ifdef __has_cpp_attribute
 #  if __has_cpp_attribute(fallthrough)
@@ -77,6 +91,7 @@
   bool. Bitnumber starts at 0 for the first bit
  */
 #define BIT_IS_SET(value, bitnumber) (((value) & (1U<<(bitnumber))) != 0)
+#define BIT_IS_SET_64(value, bitnumber) (((value) & (uint64_t(1U)<<(bitnumber))) != 0)
 
 // get high or low bytes from 2 byte integer
 #define LOWBYTE(i) ((uint8_t)(i))
@@ -84,7 +99,8 @@
 
 #define ARRAY_SIZE(_arr) (sizeof(_arr) / sizeof(_arr[0]))
 
-#define UINT16_VALUE(hbyte, lbyte) (static_cast<uint16_t>((hbyte<<8)|lbyte))
+#define UINT16_VALUE(hbyte, lbyte) (static_cast<uint16_t>(((hbyte)<<8)|(lbyte)))
+#define UINT32_VALUE(b3, b2, b1, b0) (static_cast<uint32_t>(((b3)<<24)|((b2)<<16)|((b1)<<8)|(b0)))
 
 /*
  * See UNUSED_RESULT. The difference is that it receives @uniq_ as the name to
@@ -109,6 +125,9 @@
 
 // @}
 
+// STR_VALUE returns the string equivalent for the passed cpp macro, so e.g.
+// printf("%s", STR_VALUE(EINVAL)); will print "EINVAL"
+#define STR_VALUE(x) #x
 
 // assert_storage_size template: assert that the memory used to store an
 // item is of a specific size.
@@ -124,6 +143,11 @@ template<typename s, size_t t> struct assert_storage_size {
     _assert_storage_size<s, sizeof(s), t> _member;
 };
 
+#define ASSERT_STORAGE_SIZE_JOIN( name, line ) ASSERT_STORAGE_SIZE_DO_JOIN( name, line )
+#define ASSERT_STORAGE_SIZE_DO_JOIN( name, line )  name ## line
+#define ASSERT_STORAGE_SIZE(structure, size) \
+    do { assert_storage_size<structure, size> ASSERT_STORAGE_SIZE_JOIN(assert_storage_sizex, __LINE__); (void)ASSERT_STORAGE_SIZE_JOIN(assert_storage_sizex, __LINE__); } while(false)
+
 ////////////////////////////////////////////////////////////////////////////////
 /// @name	Conversions
 ///
@@ -138,3 +162,33 @@ template<typename s, size_t t> struct assert_storage_size {
 bool is_bounded_int32(int32_t value, int32_t lower_bound, int32_t upper_bound);
 
 bool hex_to_uint8(uint8_t a, uint8_t &res);  // return the uint8 value of an ascii hex character
+
+/*
+  strncpy without the warning for not leaving room for nul termination
+ */
+size_t strncpy_noterm(char *dest, const char *src, size_t n);
+
+// return the numeric value of an ascii hex character
+uint8_t char_to_hex(char a);
+
+/*
+  Bit manipulation
+ */
+//#define BIT_SET(value, bitnumber) ((value) |= (((typeof(value))1U) << (bitnumber)))
+template <typename T> void BIT_SET (T& value, uint8_t bitnumber) noexcept {
+     static_assert(std::is_integral<T>::value, "Integral required.");
+     ((value) |= ((T)(1U) << (bitnumber)));
+ }
+//#define BIT_CLEAR(value, bitnumber) ((value) &= ~(((typeof(value))1U) << (bitnumber)))
+template <typename T> void BIT_CLEAR (T& value, uint8_t bitnumber) noexcept {
+     static_assert(std::is_integral<T>::value, "Integral required.");
+     ((value) &= ~((T)(1U) << (bitnumber)));
+ }
+
+/*
+  See the comments in libraries/AP_Common/c++.cpp
+ */
+#ifndef NEW_NOTHROW
+#define NEW_NOTHROW new(std::nothrow)
+#endif
+

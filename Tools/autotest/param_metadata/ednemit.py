@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
  Emits parameters as an EDN file, does some small remapping of names
 """
@@ -11,7 +10,8 @@ import subprocess
 
 
 class EDNEmit(Emit):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        Emit.__init__(self, *args, **kwargs)
         self.output = "{:date " + edn_format.dumps(datetime.datetime.now(pytz.utc)) + " "
         git = subprocess.Popen(["git log --pretty=format:'%h'  -n 1"], shell=True, stdout=subprocess.PIPE).communicate()[0]
         self.output += ":git-hash \"" + git.decode("ascii") + "\" "
@@ -49,6 +49,9 @@ class EDNEmit(Emit):
             # remove any keys we don't really care to share
             for key in self.remove_keys:
                 output_dict.pop(key, None)
+            for key in list(output_dict.keys()):
+                if not self.should_emit_field(param, key):
+                    output_dict.pop(key, None)
 
             # rearrange bitmasks to be a vector with nil's if the bit doesn't have meaning
             if "bitmask" in output_dict:

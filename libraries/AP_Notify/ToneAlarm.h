@@ -32,9 +32,6 @@ public:
     /// update - updates led according to timed_updated.  Should be called at 50Hz
     void update() override;
 
-    // handle a PLAY_TUNE message
-    void handle_play_tune(const mavlink_message_t &msg) override;
-
     // play_tune - play tone specified by the provided string of notes
     void play_tune(const char *tune) override;
 
@@ -59,11 +56,13 @@ private:
         uint16_t pre_arm_check         : 1;    // 0 = failing checks, 1 = passed
         uint16_t failsafe_radio        : 1;    // 1 if radio failsafe
         uint16_t failsafe_gcs          : 1;    // 1 if gcs failsafe
+        uint16_t failsafe_ekf          : 1;    // 1 if ekf failsafe
         uint16_t vehicle_lost          : 1;    // 1 if lost copter tone requested
         uint16_t compass_cal_running   : 1;    // 1 if compass calibration is running
         uint16_t waiting_for_throw     : 1;    // 1 if waiting for copter throw launch
         uint16_t leak_detected         : 1;    // 1 if leak detected
         uint16_t powering_off          : 1;    // 1 if smart battery is powering off
+        uint16_t temp_cal_running      : 1;    // 1 if temperature calibration is running
     } flags;
     bool _have_played_ready_tone : 1;
 

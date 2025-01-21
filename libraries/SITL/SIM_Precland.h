@@ -28,7 +28,7 @@ public:
     };
 
     // update precland state
-    void update(const Location &loc, const Vector3f &position);
+    void update(const Location &loc);
 
     // true if precland sensor is online and healthy
     bool healthy() const { return _healthy; }
@@ -36,30 +36,44 @@ public:
     // timestamp of most recent data read from the sensor
     uint32_t last_update_ms() const { return _last_update_ms; }
 
-    const Vector3f &get_target_position() const { return _target_pos; }
+    const Vector3d &get_target_position() const { return _target_pos; }
     bool is_enabled() const {return static_cast<bool>(_enable);}
     void set_default_location(float lat, float lon, int16_t yaw);
     static const struct AP_Param::GroupInfo var_info[];
 
+    // enum for SIM_PLD_OPTIONS parameter
+    enum class Option : uint8_t {
+        ENABLE_TARGET_DISTANCE   = (1U << 0),
+    };
+
     AP_Int8 _enable;
-    AP_Float _origin_lat;
-    AP_Float _origin_lon;
-    AP_Float _origin_height;
+    AP_Float _device_lat;
+    AP_Float _device_lon;
+    AP_Float _device_height;
     AP_Int16 _orient_yaw;
     AP_Int8 _type;
     AP_Int32 _rate;
     AP_Float _alt_limit;
     AP_Float _dist_limit;
+    AP_Int8 _orient;
+    AP_Int8 _ship;
+    AP_Enum<Option> _options;
+
+    bool _over_precland_base;
 
     enum PreclandType {
         PRECLAND_TYPE_CYLINDER = 0,
         PRECLAND_TYPE_CONE = 1,
         PRECLAND_TYPE_SPHERE = 2,
     };
+
+    bool option_enabled(Option option) const {
+        return (_options & uint8_t(option)) != 0;
+    }
 private:
     uint32_t _last_update_ms;
     bool _healthy;
-    Vector3f _target_pos;
+    Vector3d _target_pos;
 };
 
 }

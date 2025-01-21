@@ -9,6 +9,7 @@
 #include <AP_HAL/system.h>
 
 #include "Scheduler.h"
+#include <AP_Math/div1000.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -17,25 +18,38 @@ using HALSITL::Scheduler;
 namespace AP_HAL {
 
 static struct {
-    struct timeval start_time;
+    uint64_t start_time_ns;
 } state;
 
+static uint64_t ts_to_nsec(struct timespec &ts)
+{
+    return ts.tv_sec*1000000000ULL + ts.tv_nsec;
+}
+    
 void init()
 {
-    gettimeofday(&state.start_time, nullptr);
+    struct timespec ts {};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    state.start_time_ns = ts_to_nsec(ts);
 }
 
+#if defined(__CYGWIN__) || defined(__CYGWIN64__) || defined(CYGWIN_BUILD)
 void panic(const char *errormsg, ...)
+#else
+void WEAK panic(const char *errormsg, ...)
+#endif
 {
     va_list ap;
 
     fflush(stdout);
+    printf("PANIC: ");
     va_start(ap, errormsg);
     vprintf(errormsg, ap);
     va_end(ap);
     printf("\n");
 
     dump_stack_trace();
+    dump_core_file();
 
     if (getenv("SITL_PANIC_EXIT")) {
         // this is used on the autotest server to prevent us waiting
@@ -46,52 +60,66 @@ void panic(const char *errormsg, ...)
 }
 
 // partly flogged from: https://github.com/tridge/junkcode/blob/master/segv_handler/segv_handler.c
-void dump_stack_trace()
+static void run_command_on_ownpid(const char *commandname)
 {
     // find dumpstack command:
-    const char *dumpstack = "dumpstack.sh"; // if we can't find it trust in PATH
+    const char *command_filepath = commandname; // if we can't find it trust in PATH
     struct stat statbuf;
+    const char *custom_scripts_dir_path = getenv("AP_SCRIPTS_DIR_PATH");
+    char *custom_scripts_dir_path_pattern = nullptr;
+    if (custom_scripts_dir_path != nullptr) {
+        if (asprintf(&custom_scripts_dir_path_pattern, "%s/%%s", custom_scripts_dir_path) == -1) {
+            custom_scripts_dir_path_pattern = nullptr;
+        }
+    }
     const char *paths[] {
-        "Tools/scripts/dumpstack.sh",
-        "APM/Tools/scripts/dumpstack.sh", // for autotest server
-        "../Tools/scripts/dumpstack.sh", // when run from e.g. ArduCopter subdirectory
+        custom_scripts_dir_path_pattern,
+        "Tools/scripts/%s",
+        "APM/Tools/scripts/%s", // for autotest server
+        "../Tools/scripts/%s", // when run from e.g. ArduCopter subdirectory
     };
+    char buffer[60];
     for (uint8_t i=0; i<ARRAY_SIZE(paths); i++) {
-        if (::stat(paths[i], &statbuf) != -1) {
-            dumpstack = paths[i];
+        if (paths[i] == nullptr) {
+            continue;
+        }
+        // form up a filepath from each path and commandname; if it
+        // exists, use it
+        snprintf(buffer, sizeof(buffer), paths[i], commandname);
+        if (::stat(buffer, &statbuf) != -1) {
+            command_filepath = buffer;
             break;
         }
     }
+    free(custom_scripts_dir_path_pattern);
 
-    char cmd[100];
 	char progname[100];
-	char *p;
-	int n;
-
-	n = readlink("/proc/self/exe", progname, sizeof(progname)-1);
+	int n = readlink("/proc/self/exe", progname, sizeof(progname)-1);
 	if (n == -1) {
         strncpy(progname, "unknown", sizeof(progname));
         n = strlen(progname);
 	}
 	progname[n] = 0;
 
-	p = strrchr(progname, '/');
+	char *p = strrchr(progname, '/');
     if (p != nullptr) {
 	    *p = 0;
     } else {
         p = progname;
     }
 
-    char output_filepath[30];
+    char output_filepath[80];
     snprintf(output_filepath,
              ARRAY_SIZE(output_filepath),
-             "dumpstack_%s.%d.out",
+             "%s_%s.%d.out",
+             commandname,
              p+1,
              (int)getpid());
+    char cmd[200];
 	snprintf(cmd,
              sizeof(cmd),
              "sh %s %d >%s 2>&1",
-             dumpstack,
+             command_filepath,
              (int)getpid(),
              output_filepath);
     fprintf(stderr, "Running: %s\n", cmd);
@@ -100,8 +128,8 @@ void dump_stack_trace()
         fprintf(stderr, "Failed\n");
         return;
     }
-    fprintf(stderr, "Stack dumped\n");
-
+    fprintf(stderr, "%s has been run.  Output was:\n", commandname);
+    fprintf(stderr, "-------------- begin %s output ----------------\n", commandname);
     // print the trace on stderr:
     int fd = open(output_filepath, O_RDONLY);
     if (fd == -1) {
@@ -123,7 +151,16 @@ void dump_stack_trace()
             break;
         }
     }
+    fprintf(stderr, "-------------- end %s output ----------------\n", commandname);
     close(fd);
+}
+void dump_stack_trace()
+{
+    run_command_on_ownpid("dumpstack.sh");
+}
+void dump_core_file()
+{
+    run_command_on_ownpid("dumpcore.sh");
 }
 
 uint32_t micros()
@@ -152,28 +189,14 @@ uint64_t micros64()
         return stopped_usec;
     }
 
-    struct timeval tp;
-    gettimeofday(&tp, nullptr);
-    uint64_t ret = 1.0e6 * ((tp.tv_sec + (tp.tv_usec * 1.0e-6)) -
-                            (state.start_time.tv_sec +
-                             (state.start_time.tv_usec * 1.0e-6)));
-    return ret;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return uint64_div1000(ts_to_nsec(ts) - state.start_time_ns);
 }
 
 uint64_t millis64()
 {
-    const HALSITL::Scheduler* scheduler = HALSITL::Scheduler::from(hal.scheduler);
-    uint64_t stopped_usec = scheduler->stopped_clock_usec();
-    if (stopped_usec) {
-        return stopped_usec / 1000;
-    }
-
-    struct timeval tp;
-    gettimeofday(&tp, nullptr);
-    uint64_t ret = 1.0e3*((tp.tv_sec + (tp.tv_usec*1.0e-6)) -
-                          (state.start_time.tv_sec +
-                           (state.start_time.tv_usec*1.0e-6)));
-    return ret;
+    return uint64_div1000(micros64());
 }
 
 } // namespace AP_HAL

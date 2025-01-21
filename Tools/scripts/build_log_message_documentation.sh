@@ -1,9 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 set -x
 
-DIR="../buildlogs/LogMessages"
+if [ "x$BUILDLOGS" = "x" ]; then
+    BUILDLOGS="../buildlogs"
+fi
+DIR="$BUILDLOGS/LogMessages"
 
 # work from either APM directory or above
 [ -d ArduPlane ] || cd APM
@@ -20,8 +23,10 @@ generate_log_message_documentation() {
     VEHICLE_DIR="$DIR/$VEHICLE"
     mkdir -p "$VEHICLE_DIR"
     /bin/cp LogMessages.* "$VEHICLE_DIR/"
+    gzip -9 <"$VEHICLE_DIR"/LogMessages.xml >"$VEHICLE_DIR"/LogMessages.xml.gz.new && mv "$VEHICLE_DIR"/LogMessages.xml.gz.new "$VEHICLE_DIR"/LogMessages.xml.gz
+    xz -e <"$VEHICLE_DIR"/LogMessages.xml >"$VEHICLE_DIR"/LogMessages.xml.xz.new && mv "$VEHICLE_DIR"/LogMessages.xml.xz.new "$VEHICLE_DIR"/LogMessages.xml.xz
 }
 
-for vehicle in Rover Plane Copter Tracker; do
+for vehicle in Rover Plane Copter Tracker Blimp Sub; do
     generate_log_message_documentation "$vehicle"
 done

@@ -20,6 +20,8 @@
 
 #include "ToshibaLED_I2C.h"
 
+#if AP_NOTIFY_TOSHIBALED_ENABLED
+
 #include <utility>
 
 #include <AP_HAL/AP_HAL.h>
@@ -44,7 +46,7 @@ ToshibaLED_I2C::ToshibaLED_I2C(uint8_t bus)
 {
 }
 
-bool ToshibaLED_I2C::hw_init(void)
+bool ToshibaLED_I2C::init(void)
 {
     // first look for led on external bus
     _dev = std::move(hal.i2c_mgr->get_device(_bus, TOSHIBA_LED_I2C_ADDR));
@@ -95,3 +97,5 @@ void ToshibaLED_I2C::_timer(void)
 
     _dev->transfer(val, sizeof(val), nullptr, 0);
 }
+
+#endif  // AP_NOTIFY_TOSHIBALED_ENABLED

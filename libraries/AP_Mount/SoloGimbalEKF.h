@@ -18,10 +18,12 @@
  */
 #pragma once
 
+#include "AP_Mount_config.h"
+
+#if HAL_SOLO_GIMBAL_ENABLED
+
 #include <AP_Math/AP_Math.h>
 #include <AP_Param/AP_Param.h>
-//#include <AP_NavEKF2/AP_NavEKF2.h>
-
 #include <AP_Math/vectorN.h>
 
 class SoloGimbalEKF
@@ -125,3 +127,4 @@ private:
     // Force symmmetry and non-negative diagonals on state covarinace matrix
     void fixCovariance();
 };
+#endif // HAL_SOLO_GIMBAL_ENABLED

@@ -14,6 +14,10 @@
  */
 #pragma once
 
+#include "AP_Notify_config.h"
+
+#if AP_NOTIFY_SERIALLED_ENABLED
+
 #include "RGBLed.h"
 #include <AP_Common/AP_Common.h>
 #include <AP_SerialLED/AP_SerialLED.h>
@@ -28,22 +32,18 @@ public:
         uint8_t g;
     } RGB;
 
+    bool init(void) override;
+
     virtual uint16_t init_ports() { return 0; };
 
 protected:
-
-    bool hw_init(void) override;
 
     bool hw_set_rgb(uint8_t r, uint8_t g, uint8_t b) override;
 
 private:
     uint16_t enable_mask;
 
-    // perdiodic tick to re-init
-    uint32_t    _last_init_ms;
-
-    // periodic callback
-    void timer();
-
     HAL_Semaphore _sem;
 };
+
+#endif  // AP_NOTIFY_SERIALLED_ENABLED

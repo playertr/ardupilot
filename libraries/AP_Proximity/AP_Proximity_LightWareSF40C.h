@@ -1,6 +1,9 @@
 #pragma once
 
-#include "AP_Proximity.h"
+#include "AP_Proximity_config.h"
+
+#if AP_PROXIMITY_LIGHTWARE_SF40C_ENABLED
+
 #include "AP_Proximity_Backend_Serial.h"
 
 #define PROXIMITY_SF40C_TIMEOUT_MS            200   // requests timeout after 0.2 seconds
@@ -109,7 +112,10 @@ private:
     uint32_t _last_reply_ms;                // system time of last valid reply
     uint32_t _last_restart_ms;              // system time we restarted the sensor
     uint32_t _last_distance_received_ms;    // system time of last distance measurement received from sensor
-    uint8_t _last_sector = UINT8_MAX;       // sector of last distance_cm
+    AP_Proximity_Boundary_3D::Face _face;   // face of _face_distance
+    float _face_distance;                   // shortest distance (in meters) on face
+    float _face_yaw_deg;                    // yaw angle (in degrees) of shortest distance on face
+    bool _face_distance_valid;              // true if face has at least one valid distance
 
     // state of sensor
     struct {
@@ -147,3 +153,5 @@ private:
     uint32_t buff_to_uint32(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3) const;
     uint16_t buff_to_uint16(uint8_t b0, uint8_t b1) const;
 };
+
+#endif // AP_PROXIMITY_LIGHTWARE_SF40C_ENABLED

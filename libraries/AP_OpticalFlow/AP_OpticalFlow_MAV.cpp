@@ -13,17 +13,20 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "AP_OpticalFlow_MAV.h"
+
+#if AP_OPTICALFLOW_MAV_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 #include <AP_AHRS/AP_AHRS.h>
-#include "AP_OpticalFlow_MAV.h"
 
 #define OPTFLOW_MAV_TIMEOUT_SEC 0.5f
 
 // detect the device
-AP_OpticalFlow_MAV *AP_OpticalFlow_MAV::detect(OpticalFlow &_frontend)
+AP_OpticalFlow_MAV *AP_OpticalFlow_MAV::detect(AP_OpticalFlow &_frontend)
 {
     // we assume mavlink messages will be sent into this driver
-    AP_OpticalFlow_MAV *sensor = new AP_OpticalFlow_MAV(_frontend);
+    AP_OpticalFlow_MAV *sensor = NEW_NOTHROW AP_OpticalFlow_MAV(_frontend);
     return sensor;
 }
 
@@ -44,7 +47,7 @@ void AP_OpticalFlow_MAV::update(void)
         return;
     }
 
-    struct OpticalFlow::OpticalFlow_state state {};
+    struct AP_OpticalFlow::OpticalFlow_state state {};
 
     state.surface_quality = quality_sum / count;
 
@@ -65,8 +68,8 @@ void AP_OpticalFlow_MAV::update(void)
         // copy average body rate to state structure
         state.bodyRate = { gyro_sum.x / gyro_sum_count, gyro_sum.y / gyro_sum_count };
 
+        // we only apply yaw to flowRate as body rate comes from AHRS
         _applyYaw(state.flowRate);
-        _applyYaw(state.bodyRate);
     } else {
         // first frame received in some time so cannot calculate flow values
         state.flowRate.zero();
@@ -104,3 +107,5 @@ void AP_OpticalFlow_MAV::handle_msg(const mavlink_message_t &msg)
     // take sensor id from message
     sensor_id = packet.sensor_id;
 }
+
+#endif  // AP_OPTICALFLOW_MAV_ENABLED

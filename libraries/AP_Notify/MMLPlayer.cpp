@@ -6,9 +6,9 @@
 #include <AP_Math/AP_Math.h>
 #include <AP_Notify/AP_Notify.h>
 
-#if HAL_WITH_UAVCAN
-#include <AP_UAVCAN/AP_UAVCAN.h>
-#include <AP_BoardConfig/AP_BoardConfig_CAN.h>
+#if HAL_CANMANAGER_ENABLED
+#include <AP_DroneCAN/AP_DroneCAN.h>
+#include <AP_CANManager/AP_CANManager.h>
 #endif
 
 extern const AP_HAL::HAL& hal;
@@ -64,14 +64,18 @@ void MMLPlayer::start_note(float duration, float frequency, float volume)
     _note_duration_us = duration*1e6;
     hal.util->toneAlarm_set_buzzer_tone(frequency, volume, _note_duration_us/1000U);
 
-#if HAL_WITH_UAVCAN
+#if HAL_ENABLE_DRONECAN_DRIVERS
     // support CAN buzzers too
     uint8_t can_num_drivers = AP::can().get_num_drivers();
+    uavcan_equipment_indication_BeepCommand msg;
 
     for (uint8_t i = 0; i < can_num_drivers; i++) {
-        AP_UAVCAN *uavcan = AP_UAVCAN::get_uavcan(i);
-        if (uavcan != nullptr) {
-            uavcan->set_buzzer_tone(frequency, _note_duration_us*1.0e-6);
+        AP_DroneCAN *uavcan = AP_DroneCAN::get_dronecan(i);
+        if (uavcan != nullptr &&
+            (AP::notify().get_buzzer_types() & uint8_t(AP_Notify::BuzzerType::UAVCAN))) {
+            msg.frequency = frequency;
+            msg.duration = _note_duration_us*1.0e-6;
+            uavcan->buzzer.broadcast(msg);
         }
     }
 #endif
@@ -106,7 +110,7 @@ size_t MMLPlayer::next_dots()
     return ret;
 }
 
-float MMLPlayer::rest_duration(uint32_t rest_length, uint8_t dots)
+float MMLPlayer::rest_duration(uint32_t rest_length, uint8_t dots) const
 {
     float whole_note_period = 240.0f / _tempo;
     if (rest_length == 0) {
@@ -114,7 +118,7 @@ float MMLPlayer::rest_duration(uint32_t rest_length, uint8_t dots)
     }
 
     float rest_period = whole_note_period/rest_length;
-    float dot_extension = rest_period/2;
+    float dot_extension = rest_period * 0.5f;
 
     while (dots--) {
         rest_period += dot_extension;
@@ -299,7 +303,7 @@ void MMLPlayer::next_action()
     }
     note_period -= _silence_duration;
 
-    float dot_extension = note_period/2;
+    float dot_extension = note_period * 0.5f;
     uint8_t dots = next_dots();
     while (dots--) {
         note_period += dot_extension;

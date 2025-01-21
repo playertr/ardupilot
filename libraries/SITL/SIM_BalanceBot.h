@@ -31,7 +31,7 @@ public:
 
     /* static object creator */
     static Aircraft *create(const char *frame_str) {
-        return new BalanceBot(frame_str);
+        return NEW_NOTHROW BalanceBot(frame_str);
     }
 
 private:
@@ -40,7 +40,7 @@ private:
 
     float skid_turn_rate;
 
-    float calc_yaw_rate(float steering);
+    float calc_yaw_rate(float steering) const;
 };
 
 } // namespace SITL

@@ -1,5 +1,6 @@
 #include "Copter.h"
 
+#if AP_LANDINGGEAR_ENABLED
 
 // Run landing gear controller at 10Hz
 void Copter::landinggear_update()
@@ -9,24 +10,11 @@ void Copter::landinggear_update()
         return;
     }
 
-    // last status (deployed or retracted) used to check for changes, initialised to startup state of landing gear
-    static bool last_deploy_status = landinggear.deployed();
-
-    // send event message to datalog if status has changed
-    if (landinggear.deployed() != last_deploy_status) {
-        if (landinggear.deployed()) {
-            AP::logger().Write_Event(LogEvent::LANDING_GEAR_DEPLOYED);
-        } else {
-            AP::logger().Write_Event(LogEvent::LANDING_GEAR_RETRACTED);
-        }
-    }
-
-    last_deploy_status = landinggear.deployed();
-
     // support height based triggering using rangefinder or altitude above ground
     int32_t height_cm = flightmode->get_alt_above_ground_cm();
 
     // use rangefinder if available
+#if AP_RANGEFINDER_ENABLED
     switch (rangefinder.status_orient(ROTATION_PITCH_270)) {
     case RangeFinder::Status::NotConnected:
     case RangeFinder::Status::NoData:
@@ -44,6 +32,9 @@ void Copter::landinggear_update()
         height_cm = rangefinder_state.alt_cm_filt.get();
         break;
     }
+#endif  // AP_RANGEFINDER_ENABLED
 
     landinggear.update(height_cm * 0.01f); // convert cm->m for update call
 }
+
+#endif // AP_LANDINGGEAR_ENABLED

@@ -12,13 +12,15 @@
  * You should have received a copy of the GNU General Public License along
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#include <hal.h>
 #include "Device.h"
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_HAL/utility/OwnPtr.h>
 #include <stdio.h>
 
-#if HAL_USE_I2C == TRUE || HAL_USE_SPI == TRUE
+#if HAL_USE_I2C == TRUE || HAL_USE_SPI == TRUE || HAL_USE_WSPI == TRUE
 
 #include "Scheduler.h"
 #include "Semaphores.h"
@@ -38,6 +40,13 @@ DeviceBus::DeviceBus(uint8_t _thread_priority) :
 {
     bouncebuffer_init(&bounce_buffer_tx, 10, false);
     bouncebuffer_init(&bounce_buffer_rx, 10, false);
+}
+
+DeviceBus::DeviceBus(uint8_t _thread_priority, bool axi_sram) :
+        thread_priority(_thread_priority)
+{
+    bouncebuffer_init(&bounce_buffer_tx, 10, axi_sram);
+    bouncebuffer_init(&bounce_buffer_rx, 10, axi_sram);
 }
 
 /*
@@ -102,6 +111,9 @@ AP_HAL::Device::PeriodicHandle DeviceBus::register_periodic_callback(uint32_t pe
         // setup a name for the thread
         const uint8_t name_len = 7;
         char *name = (char *)malloc(name_len);
+        if (name == nullptr){
+            return nullptr;
+        }
         switch (hal_device->bus_type()) {
         case AP_HAL::Device::BUS_TYPE_I2C:
             snprintf(name, name_len, "I2C%u",
@@ -125,7 +137,7 @@ AP_HAL::Device::PeriodicHandle DeviceBus::register_periodic_callback(uint32_t pe
             AP_HAL::panic("Failed to create bus thread %s", name);
         }
     }
-    DeviceBus::callback_info *callback = new DeviceBus::callback_info;
+    DeviceBus::callback_info *callback = NEW_NOTHROW DeviceBus::callback_info;
     if (callback == nullptr) {
         return nullptr;
     }

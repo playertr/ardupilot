@@ -14,8 +14,12 @@
  */
 #pragma once
 
+#include "AP_Notify_config.h"
+
+#if AP_NOTIFY_GPIO_LED_3_ENABLED
+
 #include <AP_Common/AP_Common.h>
-#include <AP_HAL/AP_HAL.h>
+#include <AP_HAL/AP_HAL_Boards.h>
 
 #include "NotifyDevice.h"
 
@@ -32,3 +36,5 @@ private:
     // counter incremented at 50Hz
     uint8_t _counter;
 };
+
+#endif  // AP_NOTIFY_GPIO_LED_3_ENABLED

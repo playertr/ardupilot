@@ -16,6 +16,8 @@ namespace Empty {
     class SPIDevice;
     class SPIDeviceDriver;
     class SPIDeviceManager;
+    class WSPIDevice;
+    class WSPIDeviceManager;
     class Storage;
     class UARTDriver;
     class Util;

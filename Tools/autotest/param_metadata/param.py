@@ -4,20 +4,38 @@ class Parameter(object):
         self.name = name
         self.real_path = real_path
 
+    def change_name(self, name):
+        self.name = name
+
 
 class Vehicle(object):
-    def __init__(self, name, path, truename=None):
-        if truename is not None:
-            self.truename = truename
+    def __init__(self, name, path, reference=None):
         self.name = name
         self.path = path
+        self.reference = reference
+        if reference is None:
+            self.reference = self.truename
         self.params = []
 
 
 class Library(object):
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, name, reference=None, not_rst=False, check_duplicates=False):
+        self.set_name(name)
         self.params = []
+        if reference is not None:
+            self.reference = reference
+        self.not_rst = not_rst
+        self.check_duplicates = check_duplicates
+
+    def set_name(self, name):
+        self.name = name
+        self.reference = name
+
+    def has_param(self, pname):
+        for p in self.params:
+            if pname == p.name:
+                return True
+        return False
 
 known_param_fields = [
              'Description',
@@ -32,6 +50,9 @@ known_param_fields = [
              'Volatile',
              'ReadOnly',
              'Calibration',
+             'Vector3Parameter',
+             'SortValues',
+             'Legacy',
                       ]
 
 # Follow SI units conventions from:
@@ -49,9 +70,11 @@ known_units = {
              'ds'      : 'deciseconds'           ,
              'cs'      : 'centiseconds'          ,
              'ms'      : 'milliseconds'          ,
+             'us'      : 'microseconds'          ,
              'PWM'     : 'PWM in microseconds'   , # should be microseconds, this is NOT a SI unit, but follows https://github.com/ArduPilot/ardupilot/pull/5538#issuecomment-271943061
              'Hz'      : 'hertz'                 ,
              'kHz'     : 'kilohertz'             ,
+             '1/s'     : 'per second'            , # Not SI but in some situations more user-friendly than hertz
 # distance
              'km'      : 'kilometers'                , # metre is the SI unit name, meter is the american spelling of it
              'm'       : 'meters'                    , # metre is the SI unit name, meter is the american spelling of it
@@ -69,6 +92,7 @@ known_units = {
              'deg'     : 'degrees'               ,     # Not SI, but is some situations more user-friendly than radians
              'deg/s'   : 'degrees per second'    ,     # Not SI, but is some situations more user-friendly than radians
              'deg/s/s' : 'degrees per square second',  # Not SI, but is some situations more user-friendly than radians
+             'deg/s/s/s' : 'degrees per cube second',  # Not SI, but is some situations more user-friendly than radians
              'cdeg'    : 'centidegrees'          ,     # Not SI, but is some situations more user-friendly than radians
              'cdeg/s'  : 'centidegrees per second',    # Not SI, but is some situations more user-friendly than radians
              'cdeg/s/s': 'centidegrees per square second' , # Not SI, but is some situations more user-friendly than radians
@@ -85,7 +109,7 @@ known_units = {
              'mGauss'  : 'milligauss'            , # Gauss is not an SI unit, but 1 tesla = 10000 gauss so a simple replacement is not possible here
 # pressure
              'Pa'      : 'pascal'                ,
-             'mbar'    : 'millibar'              ,
+             'hPa'     : 'hectopascal'           ,
 # ratio
              '%'       : 'percent'               ,
              '%/s'     : 'percent per second'    ,
@@ -93,17 +117,25 @@ known_units = {
              'dB'      : 'decibel'               ,
 # compound
 
-             'kB'      : 'kilobytes'                ,
+             'kB'      : 'kilobytes'               ,
+             'MB'      : 'megabyte'                ,
              'm.m/s/s' : 'square meter per square second',
              'deg/m/s' : 'degrees per meter per second'  ,
              'm/s/m'   : 'meters per second per meter'   , # Why not use Hz here ????
              'mGauss/A': 'milligauss per ampere' ,
-             'mAh'    : 'milliampere hour'      ,
+             'mAh'     : 'milliampere hour'      ,
+             'Ah'      : 'ampere hour'           ,
              'A/V'     : 'ampere per volt'       ,
              'm/V'     : 'meters per volt'       ,
              'gravities': 'standard acceleration due to gravity' , # g_n would be a more correct unit, but IMHO no one understands what g_n means
              'octal'   : 'octal'                 ,
              'RPM'     : 'Revolutions Per Minute',
+             'kg'      : 'kilograms',
+             'kg/m/m'  : 'kilograms per square meter', # metre is the SI unit name, meter is the american spelling of it
+             'kg/m/m/m': 'kilograms per cubic meter',
+             'litres'  : 'litres',
+             'Ohm'     : 'Ohm',
+             'N'       : 'Newtons',
              }
 
 required_param_fields = [
@@ -112,6 +144,11 @@ required_param_fields = [
              'User',
                       ]
 
+required_library_param_fields = [
+             'Description',
+             'DisplayName',
+                      ]
+    
 known_group_fields = [
                       'Path',
                       ]

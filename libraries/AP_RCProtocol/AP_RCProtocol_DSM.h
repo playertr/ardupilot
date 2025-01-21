@@ -17,7 +17,12 @@
 
 #pragma once
 
-#include "AP_RCProtocol.h"
+#include "AP_RCProtocol_config.h"
+
+#if AP_RCPROTOCOL_DSM_ENABLED
+
+#include "AP_RCProtocol_Backend.h"
+
 #include "SoftSerial.h"
 
 #define AP_DSM_MAX_CHANNELS 12
@@ -34,7 +39,7 @@ private:
     void _process_byte(uint32_t timestamp_ms, uint8_t byte);
     void dsm_decode();
     bool dsm_decode_channel(uint16_t raw, unsigned shift, unsigned *channel, unsigned *value);
-    void dsm_guess_format(bool reset, const uint8_t dsm_frame[16]);
+    void dsm_guess_format(bool reset, const uint8_t dsm_frame[16], unsigned frame_channels);
     bool dsm_parse_byte(uint32_t frame_time_ms, uint8_t b, uint16_t *values,
                         uint16_t *num_values, uint16_t max_channels);
     bool dsm_decode(uint32_t frame_time_ms, const uint8_t dsm_frame[16],
@@ -57,6 +62,7 @@ private:
         BIND_STATE4,
     } bind_state;
     uint32_t bind_last_ms;
+    uint32_t bind_mode_saved;
 
     uint16_t last_values[AP_DSM_MAX_CHANNELS];
 
@@ -76,3 +82,5 @@ private:
 
     SoftSerial ss{115200, SoftSerial::SERIAL_CONFIG_8N1};
 };
+
+#endif  // AP_RCPROTOCOL_DSM_ENABLED

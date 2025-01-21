@@ -16,9 +16,10 @@
 */
 #pragma once
 
-#include <AP_HAL/AP_HAL.h>
+#include "AP_Notify_config.h"
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
+#if AP_NOTIFY_SYSFS_LED_ENABLED
+
 #include <AP_HAL_Linux/Led_Sysfs.h>
 
 #include "RGBLed.h"
@@ -29,9 +30,9 @@ public:
     Led_Sysfs(const char *red, const char *green, const char *blue,
               uint8_t off_brightness = 0xff , uint8_t low_brightness = 0x00,
               uint8_t medium_brightness = 0x00, uint8_t high_brightness = 0x00);
+    bool init(void) override;
 
 protected:
-    bool hw_init(void) override;
     bool hw_set_rgb(uint8_t r, uint8_t g, uint8_t b) override;
 
 private:
@@ -39,4 +40,4 @@ private:
     Linux::Led_Sysfs green_led;
     Linux::Led_Sysfs blue_led;
 };
-#endif
+#endif  // AP_NOTIFY_SYSFS_LED_ENABLED

@@ -16,6 +16,8 @@
  */
 #include "AP_Compass_IST8308.h"
 
+#if AP_COMPASS_IST8308_ENABLED
+
 #include <stdio.h>
 #include <utility>
 
@@ -87,7 +89,7 @@ AP_Compass_Backend *AP_Compass_IST8308::probe(AP_HAL::OwnPtr<AP_HAL::I2CDevice> 
         return nullptr;
     }
 
-    AP_Compass_IST8308 *sensor = new AP_Compass_IST8308(std::move(dev), force_external, rotation);
+    AP_Compass_IST8308 *sensor = NEW_NOTHROW AP_Compass_IST8308(std::move(dev), force_external, rotation);
     if (!sensor || !sensor->init()) {
         delete sensor;
         return nullptr;
@@ -166,7 +168,7 @@ bool AP_Compass_IST8308::init()
     set_dev_id(_instance, _dev->get_bus_id());
 
     printf("%s found on bus %u id %u address 0x%02x\n", name,
-           _dev->bus_num(), _dev->get_bus_id(), _dev->get_bus_address());
+           _dev->bus_num(), unsigned(_dev->get_bus_id()), _dev->get_bus_address());
 
     set_rotation(_instance, _rotation);
 
@@ -176,8 +178,6 @@ bool AP_Compass_IST8308::init()
 
     _dev->register_periodic_callback(SAMPLING_PERIOD_USEC,
                                      FUNCTOR_BIND_MEMBER(&AP_Compass_IST8308::timer, void));
-
-    _perf_xfer_err = hal.util->perf_alloc(AP_HAL::Util::PC_COUNT, "IST8308_xfer_err");
 
     return true;
 
@@ -197,17 +197,11 @@ void AP_Compass_IST8308::timer()
 
     if (!_dev->read_registers(STAT1_REG, &stat, 1) ||
         !(stat & STAT1_VAL_DRDY)) {
-        hal.util->perf_count(_perf_xfer_err);
         return;
-    }
-
-    if (stat & STAT1_VAL_DOR) {
-        printf("IST8308: data overrun\n");
     }
 
     if (!_dev->read_registers(DATAX_L_REG, (uint8_t *) &buffer,
                               sizeof(buffer))) {
-        hal.util->perf_count(_perf_xfer_err);
         return;
     }
 
@@ -228,3 +222,5 @@ void AP_Compass_IST8308::read()
 {
     drain_accumulated_samples(_instance);
 }
+
+#endif  // AP_COMPASS_IST8308_ENABLED

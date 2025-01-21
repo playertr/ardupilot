@@ -2,12 +2,7 @@
 
 #include <stdint.h>
 #include "AP_HAL_Linux.h"
-
-#define LOW                 0
-#define HIGH                1
-
-#define PAGE_SIZE           (4*1024)
-#define BLOCK_SIZE          (4*1024)
+#include "GPIO_RPI_HAL.h"
 
 /**
  * @brief Check for valid Raspberry Pi pin range
@@ -21,8 +16,13 @@ template <uint8_t pin> constexpr uint8_t RPI_GPIO_()
     return pin;
 }
 
+
 namespace Linux {
 
+/**
+ * @brief Class for Raspberry PI GPIO control
+ *
+ */
 class GPIO_RPI : public AP_HAL::GPIO {
 public:
     GPIO_RPI();
@@ -40,7 +40,7 @@ public:
     bool    usb_connected(void) override;
 
 private:
-    volatile uint32_t *_gpio;
+    GPIO_RPI_HAL* gpioDriver;
 };
 
 }

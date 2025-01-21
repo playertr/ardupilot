@@ -41,7 +41,7 @@ public:
 private:
 
     AP_Int32 log_bitmask;
-    AP_Logger logger{log_bitmask};
+    AP_Logger logger;
     AP_Scheduler scheduler;
 
 };
@@ -52,15 +52,22 @@ void AP_LoggerTest::setup(void)
 {
     hal.console->printf("Logger Log Test 1.0\n");
 
-    log_bitmask = (uint32_t)-1;
-    logger.Init(log_structure, ARRAY_SIZE(log_structure));
+    log_bitmask.set((uint32_t)-1);
+    logger.init(log_bitmask, log_structure, ARRAY_SIZE(log_structure));
     logger.set_vehicle_armed(true);
     logger.Write_Message("AP_Logger Test");
-
+#ifdef DEBUG_RATES
+    hal.console->printf("| Type | Size | 10Hz(bs) | 25Hz(bs) | 400Hz(Kbs) |\n");
+    for (uint16_t i = 0; i < ARRAY_SIZE(log_structure); i++) {
+        LogStructure log = log_structure[i];
+        hal.console->printf("| %-6s | %3d | %4d | %4d | %2dk |\n", log.name, log.msg_len,
+            log.msg_len * 10, log.msg_len * 25, log.msg_len * 400 / 1000);
+    }
+#endif
     // Test
     hal.scheduler->delay(20);
 
-    // We start to write some info (sequentialy) starting from page 1
+    // We start to write some info (sequentially) starting from page 1
     // This is similar to what we will do...
     log_num = logger.find_last_log();
     hal.console->printf("Using log number %u\n", log_num);

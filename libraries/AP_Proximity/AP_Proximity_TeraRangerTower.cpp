@@ -13,8 +13,13 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <AP_HAL/AP_HAL.h>
+#include "AP_Proximity_config.h"
+
+#if AP_PROXIMITY_TERARANGERTOWER_ENABLED
+
 #include "AP_Proximity_TeraRangerTower.h"
+
+#include <AP_HAL/AP_HAL.h>
 #include <AP_Math/crc.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -60,8 +65,11 @@ bool AP_Proximity_TeraRangerTower::read_sensor_data()
     int16_t nbytes = _uart->available();
 
     while (nbytes-- > 0) {
-        char c = _uart->read();
-        if (c == 'T' ) {
+        uint8_t c;
+        if (!_uart->read(c)) {
+            return false;
+        }
+        if (char(c) == 'T' ) {
             buffer_count = 0;
         }
 
@@ -90,13 +98,18 @@ bool AP_Proximity_TeraRangerTower::read_sensor_data()
 }
 
 // process reply
-void AP_Proximity_TeraRangerTower::update_sector_data(int16_t angle_deg, uint16_t distance_cm)
+void AP_Proximity_TeraRangerTower::update_sector_data(int16_t angle_deg, uint16_t distance_mm)
 {
-    const uint8_t sector = convert_angle_to_sector(angle_deg);
-    _angle[sector] = angle_deg;
-    _distance[sector] = ((float) distance_cm) / 1000;
-    _distance_valid[sector] = distance_cm != 0xffff;
+    // Get location on 3-D boundary based on angle to the object
+    const AP_Proximity_Boundary_3D::Face face = frontend.boundary.get_face(angle_deg);
+    if ((distance_mm != 0xffff) && !ignore_reading(angle_deg, distance_mm * 0.001f, false)) {
+        frontend.boundary.set_face_attributes(face, angle_deg, ((float) distance_mm) / 1000, state.instance);
+        // update OA database
+        database_push(angle_deg, ((float) distance_mm) / 1000);
+    } else {
+        frontend.boundary.reset_face(face, state.instance);
+    }
     _last_distance_received_ms = AP_HAL::millis();
-    // update boundary used for avoidance
-    update_boundary_for_sector(sector, true);
 }
+
+#endif // AP_PROXIMITY_TERARANGERTOWER_ENABLED

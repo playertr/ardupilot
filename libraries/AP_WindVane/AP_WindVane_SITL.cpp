@@ -13,48 +13,64 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "AP_WindVane_config.h"
+
+#if AP_WINDVANE_SIM_ENABLED
+
 #include "AP_WindVane_SITL.h"
 
-// constructor
-AP_WindVane_SITL::AP_WindVane_SITL(AP_WindVane &frontend) :
-    AP_WindVane_Backend(frontend)
-{
-}
-
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+#include <SITL/SITL.h>
+#include <AP_AHRS/AP_AHRS.h>
 
 void AP_WindVane_SITL::update_direction()
 {
-    // temporarily store true speed and direction for easy access
-    const float wind_speed = AP::sitl()->wind_speed_active;
-    const float wind_dir_rad = radians(AP::sitl()->wind_direction_active);
+    if (_frontend._direction_type == _frontend.WindVaneType::WINDVANE_SITL_TRUE) {
+        // read in the true wind direction and calculate the apparent
 
-    // Note than the SITL wind direction is defined as the direction the wind is traveling to
-    // This is accounted for in these calculations
+        // temporarily store true speed and direction for easy access
+        const float wind_speed = AP::sitl()->wind_speed_active;
+        const float wind_dir_rad = radians(AP::sitl()->wind_direction_active);
 
-    // convert true wind speed and direction into a 2D vector
-    Vector2f wind_vector_ef(cosf(wind_dir_rad) * wind_speed, sinf(wind_dir_rad) * wind_speed);
+        // Note than the SITL wind direction is defined as the direction the wind is traveling to
+        // This is accounted for in these calculations
 
-    // add vehicle speed to get apparent wind vector
-    wind_vector_ef.x += AP::sitl()->state.speedN;
-    wind_vector_ef.y += AP::sitl()->state.speedE;
+        // convert true wind speed and direction into a 2D vector
+        Vector2f wind_vector_ef(cosf(wind_dir_rad) * wind_speed, sinf(wind_dir_rad) * wind_speed);
 
-    direction_update_frontend(atan2f(wind_vector_ef.y, wind_vector_ef.x));
+        // add vehicle speed to get apparent wind vector
+        wind_vector_ef.x += AP::sitl()->state.speedN;
+        wind_vector_ef.y += AP::sitl()->state.speedE;
+
+        _frontend._direction_apparent_raw =  wrap_PI(atan2f(wind_vector_ef.y, wind_vector_ef.x) - AP::ahrs().get_yaw());
+
+    } else { // WINDVANE_SITL_APARRENT
+        // directly read the body frame apparent wind set by physics backend
+        _frontend._direction_apparent_raw =  wrap_PI(AP::sitl()->get_apparent_wind_dir());
+    }
+
 }
 
 void AP_WindVane_SITL::update_speed()
 {
-    // temporarily store true speed and direction for easy access
-    const float wind_speed = AP::sitl()->wind_speed_active;
-    const float wind_dir_rad = radians(AP::sitl()->wind_direction_active);
+    if (_frontend._speed_sensor_type == _frontend.Speed_type::WINDSPEED_SITL_TRUE) {
+        // read in the true wind direction and calculate the apparent
 
-    // convert true wind speed and direction into a 2D vector
-    Vector2f wind_vector_ef(cosf(wind_dir_rad) * wind_speed, sinf(wind_dir_rad) * wind_speed);
+        // temporarily store true speed and direction for easy access
+        const float wind_speed = AP::sitl()->wind_speed_active;
+        const float wind_dir_rad = radians(AP::sitl()->wind_direction_active);
 
-    // add vehicle speed to get apparent wind vector
-    wind_vector_ef.x += AP::sitl()->state.speedN;
-    wind_vector_ef.y += AP::sitl()->state.speedE;
+        // convert true wind speed and direction into a 2D vector
+        Vector2f wind_vector_ef(cosf(wind_dir_rad) * wind_speed, sinf(wind_dir_rad) * wind_speed);
 
-    speed_update_frontend(wind_vector_ef.length());
+        // add vehicle speed to get apparent wind vector
+        wind_vector_ef.x += AP::sitl()->state.speedN;
+        wind_vector_ef.y += AP::sitl()->state.speedE;
+
+        _frontend._speed_apparent_raw = wind_vector_ef.length();
+
+    } else { // WINDSPEED_SITL_APARRENT
+        // directly read the apparent wind from as set by physics backend
+        _frontend._speed_apparent_raw = AP::sitl()->get_apparent_wind_spd();
+    }
 }
-#endif
+#endif  // AP_WINDVANE_SIM_ENABLED

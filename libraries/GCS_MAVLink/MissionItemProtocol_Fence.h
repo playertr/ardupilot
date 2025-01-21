@@ -2,6 +2,8 @@
 
 #include "MissionItemProtocol.h"
 
+#include <AC_Fence/AC_Fence.h>
+
 class AC_PolyFence_loader;
 
 class MissionItemProtocol_Fence : public MissionItemProtocol {
@@ -16,6 +18,13 @@ public:
     void truncate(const mavlink_mission_count_t &packet) override;
     MAV_MISSION_RESULT complete(const GCS_MAVLINK &_link) override;
     void timeout() override;
+
+    /*
+      static function to format mission item as mavlink_mission_item_int_t
+    */
+    static bool get_item_as_mission_item(uint16_t seq, mavlink_mission_item_int_t &ret_packet);
+
+    static MAV_MISSION_RESULT convert_MISSION_ITEM_INT_to_AC_PolyFenceItem(const mavlink_mission_item_int_t &mission_item_int, class AC_PolyFenceItem &ret);
 
 protected:
 

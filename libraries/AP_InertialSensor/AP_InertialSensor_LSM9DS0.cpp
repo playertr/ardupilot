@@ -384,6 +384,7 @@ AP_InertialSensor_LSM9DS0::AP_InertialSensor_LSM9DS0(AP_InertialSensor &imu,
     , _dev_accel(std::move(dev_accel))
     , _drdy_pin_num_a(drdy_pin_num_a)
     , _drdy_pin_num_g(drdy_pin_num_g)
+    , _temp_filter(400, 1)
     , _rotation_a(rotation_a)
     , _rotation_g(rotation_g)
     , _rotation_gH(rotation_gH)
@@ -401,7 +402,7 @@ AP_InertialSensor_Backend *AP_InertialSensor_LSM9DS0::probe(AP_InertialSensor &_
         return nullptr;
     }
     AP_InertialSensor_LSM9DS0 *sensor =
-        new AP_InertialSensor_LSM9DS0(_imu, std::move(dev_gyro), std::move(dev_accel),
+        NEW_NOTHROW AP_InertialSensor_LSM9DS0(_imu, std::move(dev_gyro), std::move(dev_accel),
                                       LSM9DS0_DRY_X_PIN, LSM9DS0_DRY_G_PIN,
                                       rotation_a, rotation_g, rotation_gH);
     if (!sensor || !sensor->_init_sensor()) {
@@ -423,7 +424,7 @@ bool AP_InertialSensor_LSM9DS0::_init_sensor()
     if (_drdy_pin_num_a >= 0) {
         _drdy_pin_a = hal.gpio->channel(_drdy_pin_num_a);
         if (_drdy_pin_a == nullptr) {
-            AP_HAL::panic("LSM9DS0: null accel data-ready GPIO channel\n");
+            AP_HAL::panic("LSM9DS0: null accel data-ready GPIO channel");
         }
 
         _drdy_pin_a->mode(HAL_GPIO_INPUT);
@@ -432,7 +433,7 @@ bool AP_InertialSensor_LSM9DS0::_init_sensor()
     if (_drdy_pin_num_g >= 0) {
         _drdy_pin_g = hal.gpio->channel(_drdy_pin_num_g);
         if (_drdy_pin_g == nullptr) {
-            AP_HAL::panic("LSM9DS0: null gyro data-ready GPIO channel\n");
+            AP_HAL::panic("LSM9DS0: null gyro data-ready GPIO channel");
         }
 
         _drdy_pin_g->mode(HAL_GPIO_INPUT);
@@ -491,7 +492,7 @@ bool AP_InertialSensor_LSM9DS0::_hardware_init()
 #endif
     }
     if (tries == 5) {
-        hal.console->printf("Failed to boot LSM9DS0 5 times\n\n");
+        DEV_PRINTF("Failed to boot LSM9DS0 5 times\n\n");
         goto fail_tries;
     }
 
@@ -511,17 +512,19 @@ fail_whoami:
  */
 void AP_InertialSensor_LSM9DS0::start(void)
 {
-    _gyro_instance = _imu.register_gyro(760, _dev_gyro->get_bus_id_devtype(DEVTYPE_GYR_L3GD20));
-    _accel_instance = _imu.register_accel(1000, _dev_accel->get_bus_id_devtype(DEVTYPE_ACC_LSM303D));
+    if (!_imu.register_gyro(gyro_instance, 760, _dev_gyro->get_bus_id_devtype(DEVTYPE_GYR_L3GD20)) ||
+        !_imu.register_accel(accel_instance, 1000, _dev_accel->get_bus_id_devtype(DEVTYPE_ACC_LSM303D))) {
+        return;
+    }
 
     if (whoami_g == LSM9DS0_G_WHOAMI_H) {
-        set_gyro_orientation(_gyro_instance, _rotation_gH);
+        set_gyro_orientation(gyro_instance, _rotation_gH);
     } else {
-        set_gyro_orientation(_gyro_instance, _rotation_g);
+        set_gyro_orientation(gyro_instance, _rotation_g);
     }
-    set_accel_orientation(_accel_instance, _rotation_a);
+    set_accel_orientation(accel_instance, _rotation_a);
     
-    _set_accel_max_abs_offset(_accel_instance, 5.0f);
+    _set_accel_max_abs_offset(accel_instance, 5.0f);
 
     /* start the timer process to read samples */
     _dev_gyro->register_periodic_callback(1000, FUNCTOR_BIND_MEMBER(&AP_InertialSensor_LSM9DS0::_poll_data, void));
@@ -639,6 +642,9 @@ void AP_InertialSensor_LSM9DS0::_accel_init()
     /* Accel data ready on INT1 */
     _register_write_xm(CTRL_REG3_XM, CTRL_REG3_XM_P1_DRDYA, true);
     hal.scheduler->delay(1);
+
+    // enable temperature sensor
+    _register_write_xm(CTRL_REG5_XM, _register_read_xm(CTRL_REG5_XM) | 0x80, false);
 }
 
 void AP_InertialSensor_LSM9DS0::_set_gyro_scale(gyro_scale scale)
@@ -691,11 +697,14 @@ void AP_InertialSensor_LSM9DS0::_poll_data()
     }
 
     // check next register value for correctness
-    if (!_dev_gyro->check_next_register()) {
-        _inc_gyro_error_count(_gyro_instance);
+    AP_HAL::Device::checkreg reg;
+    if (!_dev_gyro->check_next_register(reg)) {
+        log_register_change(_dev_gyro->get_bus_id(), reg);
+        _inc_gyro_error_count(gyro_instance);
     }
-    if (!_dev_accel->check_next_register()) {
-        _inc_accel_error_count(_accel_instance);
+    if (!_dev_accel->check_next_register(reg)) {
+        log_register_change(_dev_accel->get_bus_id(), reg);
+        _inc_accel_error_count(accel_instance);
     }
 }
 
@@ -725,15 +734,24 @@ void AP_InertialSensor_LSM9DS0::_read_data_transaction_a()
     const uint8_t reg = OUT_X_L_A | 0xC0;
 
     if (!_dev_accel->transfer(&reg, 1, (uint8_t *) &raw_data, sizeof(raw_data))) {
-        hal.console->printf("LSM9DS0: error reading accelerometer\n");
         return;
     }
 
     Vector3f accel_data(raw_data.x, -raw_data.y, -raw_data.z);
     accel_data *= _accel_scale;
 
-    _rotate_and_correct_accel(_accel_instance, accel_data);
-    _notify_new_accel_raw_sample(_accel_instance, accel_data, AP_HAL::micros64());
+    _rotate_and_correct_accel(accel_instance, accel_data);
+    _notify_new_accel_raw_sample(accel_instance, accel_data, AP_HAL::micros64());
+
+    // read temperature every 10th sample
+    if (_temp_counter++ >= 10) {
+        int16_t traw;
+        const uint8_t regtemp = OUT_TEMP_L_XM | 0xC0;
+        _temp_counter = 0;
+        if (_dev_accel->transfer(&regtemp, 1, (uint8_t *)&traw, sizeof(traw))) {
+            _temperature = _temp_filter.apply(traw * 0.125 + 25);
+        }
+    }
 }
 
 /*
@@ -745,7 +763,6 @@ void AP_InertialSensor_LSM9DS0::_read_data_transaction_g()
     const uint8_t reg = OUT_X_L_G | 0xC0;
 
     if (!_dev_gyro->transfer(&reg, 1, (uint8_t *) &raw_data, sizeof(raw_data))) {
-        hal.console->printf("LSM9DS0: error reading gyroscope\n");
         return;
     }
 
@@ -753,14 +770,15 @@ void AP_InertialSensor_LSM9DS0::_read_data_transaction_g()
 
     gyro_data *= _gyro_scale;
 
-    _rotate_and_correct_gyro(_gyro_instance, gyro_data);
-    _notify_new_gyro_raw_sample(_gyro_instance, gyro_data, AP_HAL::micros64());
+    _rotate_and_correct_gyro(gyro_instance, gyro_data);
+    _notify_new_gyro_raw_sample(gyro_instance, gyro_data, AP_HAL::micros64());
 }
 
 bool AP_InertialSensor_LSM9DS0::update()
 {
-    update_gyro(_gyro_instance);
-    update_accel(_accel_instance);
+    update_gyro(gyro_instance);
+    update_accel(accel_instance);
+    _publish_temperature(accel_instance, _temperature);
 
     return true;
 }

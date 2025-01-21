@@ -3,21 +3,15 @@
 /* ************************************************************ */
 #pragma once
 
+#include "AP_Logger_config.h"
+
+#if HAL_LOGGING_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
-#include <AP_AHRS/AP_AHRS.h>
-#include <AP_AHRS/AP_AHRS_DCM.h>
-#include <AP_AHRS/AP_AHRS_NavEKF.h>
 #include <AP_Common/AP_Common.h>
 #include <AP_Param/AP_Param.h>
-#include <AP_InertialSensor/AP_InertialSensor.h>
 #include <AP_Mission/AP_Mission.h>
-#include <AP_RPM/AP_RPM.h>
 #include <AP_Logger/LogStructure.h>
-#include <AP_Motors/AP_Motors.h>
-#include <AP_Rally/AP_Rally.h>
-#include <AP_Beacon/AP_Beacon.h>
-#include <AP_Proximity/AP_Proximity.h>
-#include <AP_InertialSensor/AP_InertialSensor_Backend.h>
 #include <AP_Vehicle/ModeReason.h>
 
 #include <stdint.h>
@@ -25,8 +19,6 @@
 #include "LoggerMessageWriter.h"
 
 class AP_Logger_Backend;
-class AP_AHRS;
-class AP_AHRS_View;
 
 // do not do anything here apart from add stuff; maintaining older
 // entries means log analysis is easier
@@ -36,13 +28,13 @@ enum class LogEvent : uint8_t {
     AUTO_ARMED = 15,
     LAND_COMPLETE_MAYBE = 17,
     LAND_COMPLETE = 18,
-    NOT_LANDED = 28,
     LOST_GPS = 19,
     FLIP_START = 21,
     FLIP_END = 22,
     SET_HOME = 25,
     SET_SIMPLE_ON = 26,
     SET_SIMPLE_OFF = 27,
+    NOT_LANDED = 28,
     SET_SUPERSIMPLE_ON = 29,
     AUTOTUNE_INITIALISED = 30,
     AUTOTUNE_OFF = 31,
@@ -80,14 +72,30 @@ enum class LogEvent : uint8_t {
     AVOIDANCE_PROXIMITY_ENABLE = 65,
     AVOIDANCE_PROXIMITY_DISABLE = 66,
     GPS_PRIMARY_CHANGED = 67,
-    WINCH_RELAXED = 68,
-    WINCH_LENGTH_CONTROL = 69,
-    WINCH_RATE_CONTROL = 70,
+    // 68, 69, 70 were winch events
     ZIGZAG_STORE_A = 71,
     ZIGZAG_STORE_B = 72,
     LAND_REPO_ACTIVE = 73,
     STANDBY_ENABLE = 74,
     STANDBY_DISABLE = 75,
+
+    // Fence events
+    FENCE_ALT_MAX_ENABLE = 76,
+    FENCE_ALT_MAX_DISABLE = 77,
+    FENCE_CIRCLE_ENABLE = 78,
+    FENCE_CIRCLE_DISABLE = 79,
+    FENCE_ALT_MIN_ENABLE = 80,
+    FENCE_ALT_MIN_DISABLE = 81,
+    FENCE_POLYGON_ENABLE = 82,
+    FENCE_POLYGON_DISABLE = 83,
+
+    // if the EKF's source input set is changed (e.g. via a switch or
+    // a script), we log an event:
+    EK3_SOURCES_SET_TO_PRIMARY = 85,
+    EK3_SOURCES_SET_TO_SECONDARY = 86,
+    EK3_SOURCES_SET_TO_TERTIARY = 87,
+
+    AIRSPEED_PRIMARY_CHANGED = 90,
 
     SURFACED = 163,
     NOT_SURFACED = 164,
@@ -131,6 +139,8 @@ enum class LogErrorSubsystem : uint8_t {
     FAILSAFE_LEAK = 27,
     PILOT_INPUT = 28,
     FAILSAFE_VIBE = 29,
+    INTERNAL_ERROR = 30,
+    FAILSAFE_DEADRECKON = 31
 };
 
 // bizarrely this enumeration has lots of duplicate values, offering
@@ -160,6 +170,8 @@ enum class LogErrorCode : uint8_t {
     FAILED_CIRCLE_INIT = 4,
     DEST_OUTSIDE_FENCE = 5,
     RTL_MISSING_RNGFND = 6,
+// subsystem specific error codes -- internal_error
+    INTERNAL_ERRORS_DETECTED = 1,
 
 // parachute failed to deploy because of low altitude or landed
     PARACHUTE_TOO_LOW = 2,
@@ -170,26 +182,22 @@ enum class LogErrorCode : uint8_t {
 // Baro specific error codes
     BARO_GLITCH = 2,
     BAD_DEPTH = 3, // sub-only
-// GPS specific error coces
+// GPS specific error codes
     GPS_GLITCH = 2,
 };
-
-// fwd declarations to avoid include errors
-class AC_AttitudeControl;
-class AC_PosControl;
 
 class AP_Logger
 {
     friend class AP_Logger_Backend; // for _num_types
+    friend class AP_Logger_RateLimiter;
 
 public:
     FUNCTOR_TYPEDEF(vehicle_startup_message_Writer, void);
 
-    AP_Logger(const AP_Int32 &log_bitmask);
+    AP_Logger();
 
     /* Do not allow copies */
-    AP_Logger(const AP_Logger &other) = delete;
-    AP_Logger &operator=(const AP_Logger&) = delete;
+    CLASS_NO_COPY(AP_Logger);
 
     // get singleton instance
     static AP_Logger *get_singleton(void) {
@@ -197,23 +205,37 @@ public:
     }
 
     // initialisation
-    void Init(const struct LogStructure *structure, uint8_t num_types);
+    void init(const AP_Int32 &log_bitmask, const struct LogStructure *structure, uint8_t num_types);
     void set_num_types(uint8_t num_types) { _num_types = num_types; }
 
     bool CardInserted(void);
+    bool _log_pause;
+
+    // pause logging if aux switch is active and log rate limit enabled
+    void log_pause(bool value) {
+        _log_pause = value;
+    }
 
     // erase handling
     void EraseAll();
 
     /* Write a block of data at current offset */
     void WriteBlock(const void *pBuffer, uint16_t size);
+
+    /* Write block of data at current offset and return true if first backend succeeds*/
+    bool WriteBlock_first_succeed(const void *pBuffer, uint16_t size);
+
     /* Write an *important* block of data at current offset */
     void WriteCriticalBlock(const void *pBuffer, uint16_t size);
+
+    /* Write a block of replay data at current offset */
+    bool WriteReplayBlock(uint8_t msg_id, const void *pBuffer, uint16_t size);
 
     // high level interface
     uint16_t find_last_log() const;
     void get_log_boundaries(uint16_t log_num, uint32_t & start_page, uint32_t & end_page);
     uint16_t get_num_logs(void);
+    uint16_t get_max_num_logs();
 
     void setVehicle_Startup_Writer(vehicle_startup_message_Writer writer);
 
@@ -228,90 +250,56 @@ public:
     void Write_Event(LogEvent id);
     void Write_Error(LogErrorSubsystem sub_system,
                      LogErrorCode error_code);
-    void Write_GPS(uint8_t instance, uint64_t time_us=0);
-    void Write_IMU();
-    void Write_IMUDT(uint64_t time_us, uint8_t imu_mask);
-    bool Write_ISBH(uint16_t seqno,
-                        AP_InertialSensor::IMU_SENSOR_TYPE sensor_type,
-                        uint8_t instance,
-                        uint16_t multiplier,
-                        uint16_t sample_count,
-                        uint64_t sample_us,
-                        float sample_rate_hz);
-    bool Write_ISBD(uint16_t isb_seqno,
-                        uint16_t seqno,
-                        const int16_t x[32],
-                        const int16_t y[32],
-                        const int16_t z[32]);
-    void Write_Vibration();
     void Write_RCIN(void);
     void Write_RCOUT(void);
     void Write_RSSI();
     void Write_Rally();
-    void Write_Baro(uint64_t time_us=0);
+#if HAL_LOGGER_FENCE_ENABLED
+    void Write_Fence();
+#endif
+    void Write_NamedValueFloat(const char *name, float value);
     void Write_Power(void);
-    void Write_AHRS2();
-    void Write_POS();
     void Write_Radio(const mavlink_radio_t &packet);
     void Write_Message(const char *message);
     void Write_MessageF(const char *fmt, ...);
-    void Write_CameraInfo(enum LogMessages msg, const Location &current_loc, uint64_t timestamp_us=0);
-    void Write_Camera(const Location &current_loc, uint64_t timestamp_us=0);
-    void Write_Trigger(const Location &current_loc);
-    void Write_ESC(uint8_t id, uint64_t time_us, int32_t rpm, uint16_t voltage, uint16_t current, int16_t esc_temp, uint16_t current_tot, int16_t motor_temp);
-    void Write_ServoStatus(uint64_t time_us, uint8_t id, float position, float force, float speed, uint8_t power_pct);
-    void Write_ESCStatus(uint64_t time_us, uint8_t id, uint32_t error_count, float voltage, float current, float temperature, int32_t rpm, uint8_t power_pct);
-    void Write_Attitude(const Vector3f &targets);
-    void Write_AttitudeView(AP_AHRS_View &ahrs, const Vector3f &targets);
-    void Write_Current();
-    void Write_Compass(uint64_t time_us=0);
+    void Write_Compass();
     void Write_Mode(uint8_t mode, const ModeReason reason);
 
     void Write_EntireMission();
-    void Write_Command(const mavlink_command_int_t &packet, MAV_RESULT result, bool was_command_long=false);
+    void Write_Command(const mavlink_command_int_t &packet,
+                       uint8_t source_system,
+                       uint8_t source_component,
+                       MAV_RESULT result,
+                       bool was_command_long=false);
+    void Write_MISE(const AP_Mission &mission, const AP_Mission::Mission_Command &cmd) {
+        Write_Mission_Cmd(mission, cmd, LOG_MISE_MSG);
+    }
+    void Write_CMD(const AP_Mission &mission, const AP_Mission::Mission_Command &cmd) {
+        Write_Mission_Cmd(mission, cmd, LOG_CMD_MSG);
+    }
     void Write_Mission_Cmd(const AP_Mission &mission,
-                               const AP_Mission::Mission_Command &cmd);
-    void Write_Origin(uint8_t origin_type, const Location &loc);
-    void Write_RPM(const AP_RPM &rpm_sensor);
-    void Write_Rate(const AP_AHRS_View *ahrs,
-                        const AP_Motors &motors,
-                        const AC_AttitudeControl &attitude_control,
-                        const AC_PosControl &pos_control);
+                           const AP_Mission::Mission_Command &cmd,
+                           LogMessages id);
     void Write_RallyPoint(uint8_t total,
                           uint8_t sequence,
-                          const RallyLocation &rally_point);
-    void Write_VisualOdom(float time_delta, const Vector3f &angle_delta, const Vector3f &position_delta, float confidence);
-    void Write_VisualPosition(uint64_t remote_time_us, uint32_t time_ms, float x, float y, float z, float roll, float pitch, float yaw, uint8_t reset_counter);
-    void Write_AOA_SSA(AP_AHRS &ahrs);
-    void Write_Beacon(AP_Beacon &beacon);
-    void Write_Proximity(AP_Proximity &proximity);
+                          const class RallyLocation &rally_point);
     void Write_SRTL(bool active, uint16_t num_points, uint16_t max_points, uint8_t action, const Vector3f& point);
-    void Write_OABendyRuler(bool active, float target_yaw, float margin, const Location &final_dest, const Location &oa_dest);
-    void Write_OADijkstra(uint8_t state, uint8_t error_id, uint8_t curr_point, uint8_t tot_points, const Location &final_dest, const Location &oa_dest);
+    void Write_Winch(bool healthy, bool thread_end, bool moving, bool clutch, uint8_t mode, float desired_length, float length, float desired_rate, uint16_t tension, float voltage, int8_t temp);
 
     void Write(const char *name, const char *labels, const char *fmt, ...);
     void Write(const char *name, const char *labels, const char *units, const char *mults, const char *fmt, ...);
+    void WriteStreaming(const char *name, const char *labels, const char *fmt, ...);
+    void WriteStreaming(const char *name, const char *labels, const char *units, const char *mults, const char *fmt, ...);
     void WriteCritical(const char *name, const char *labels, const char *fmt, ...);
     void WriteCritical(const char *name, const char *labels, const char *units, const char *mults, const char *fmt, ...);
-    void WriteV(const char *name, const char *labels, const char *units, const char *mults, const char *fmt, va_list arg_list, bool is_critical=false);
+    void WriteV(const char *name, const char *labels, const char *units, const char *mults, const char *fmt, va_list arg_list, bool is_critical=false, bool is_streaming=false);
 
-    // This structure provides information on the internal member data of a PID for logging purposes
-    struct PID_Info {
-        float target;
-        float actual;
-        float error;
-        float P;
-        float I;
-        float D;
-        float FF;
-    };
-
-    void Write_PID(uint8_t msg_type, const PID_Info &info);
+    void Write_PID(uint8_t msg_type, const class AP_PIDInfo &info);
 
     // returns true if logging of a message should be attempted
     bool should_log(uint32_t mask) const;
 
-    bool logging_started(void);
+    bool logging_started(void) const;
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL || CONFIG_HAL_BOARD == HAL_BOARD_LINUX
     // currently only AP_Logger_File support this:
@@ -322,26 +310,45 @@ public:
 
     void periodic_tasks(); // may want to split this into GCS/non-GCS duties
 
+    // We may need to make sure data is loggable before starting the
+    // EKF; when allow_start_ekf we should be able to log that data
+    bool allow_start_ekf() const;
+
     // number of blocks that have been dropped
     uint32_t num_dropped(void) const;
 
-    // accesss to public parameters
+    // access to public parameters
     void set_force_log_disarmed(bool force_logging) { _force_log_disarmed = force_logging; }
+    void set_long_log_persist(bool b) { _force_long_log_persist = b; }
     bool log_while_disarmed(void) const;
+    bool in_log_persistance(void) const;
     uint8_t log_replay(void) const { return _params.log_replay; }
-    
+
     vehicle_startup_message_Writer _vehicle_messages;
+
+    enum class LogDisarmed : uint8_t {
+        NONE = 0,
+        LOG_WHILE_DISARMED = 1,
+        LOG_WHILE_DISARMED_NOT_USB = 2,
+        LOG_WHILE_DISARMED_DISCARD = 3,
+    };
 
     // parameter support
     static const struct AP_Param::GroupInfo        var_info[];
     struct {
         AP_Int8 backend_types;
-        AP_Int8 file_bufsize; // in kilobytes
+        AP_Int16 file_bufsize; // in kilobytes
         AP_Int8 file_disarm_rot;
-        AP_Int8 log_disarmed;
+        AP_Enum<LogDisarmed> log_disarmed;
         AP_Int8 log_replay;
         AP_Int8 mav_bufsize; // in kilobytes
         AP_Int16 file_timeout; // in seconds
+        AP_Int16 min_MB_free;
+        AP_Float file_ratemax;
+        AP_Float mav_ratemax;
+        AP_Float blk_ratemax;
+        AP_Float disarm_ratemax;
+        AP_Int16 max_log_files;
     } _params;
 
     const struct LogStructure *structure(uint16_t num) const;
@@ -357,21 +364,56 @@ public:
 
     // notify logging subsystem of an arming failure. This triggers
     // logging for HAL_LOGGER_ARM_PERSIST seconds
-    void arming_failure() { _last_arming_failure_ms = AP_HAL::millis(); }
+    void arming_failure() {
+        _last_arming_failure_ms = AP_HAL::millis();
+#if HAL_LOGGER_FILE_CONTENTS_ENABLED
+        file_content_prepare_for_arming = true;
+#endif
+    }
 
     void set_vehicle_armed(bool armed_state);
     bool vehicle_is_armed() const { return _armed; }
 
     void handle_log_send();
-    bool in_log_download() const {
-        return transfer_activity != TransferActivity::IDLE;
-    }
+    bool in_log_download() const;
 
-    float quiet_nanf() const { return nanf("0x4152"); } // "AR"
+    float quiet_nanf() const { return NaNf; } // "AR"
     double quiet_nan() const { return nan("0x4152445550490a"); } // "ARDUPI"
 
     // returns true if msg_type is associated with a message
     bool msg_type_in_use(uint8_t msg_type) const;
+
+    // calculate the length of a message using fields specified in
+    // fmt; includes the message header
+    int16_t Write_calc_msg_len(const char *fmt) const;
+
+    // this structure looks much like struct LogStructure in
+    // LogStructure.h, however we need to remember a pointer value for
+    // efficiency of finding message types
+    struct log_write_fmt {
+        struct log_write_fmt *next;
+        uint8_t msg_type;
+        uint8_t msg_len;
+        const char *name;
+        const char *fmt;
+        const char *labels;
+        const char *units;
+        const char *mults;
+    } *log_write_fmts;
+
+    // return (possibly allocating) a log_write_fmt for a name
+    struct log_write_fmt *msg_fmt_for_name(const char *name, const char *labels, const char *units, const char *mults, const char *fmt, const bool direct_comp = false, const bool copy_strings = false);
+
+    // output a FMT message for each backend if not already done so
+    void Safe_Write_Emit_FMT(log_write_fmt *f);
+
+    // get count of number of times we have started logging
+    uint8_t get_log_start_count(void) const {
+        return _log_start_count;
+    }
+
+    // add a filename to list of files to log. The name must be a constant string, not allocated
+    void log_file_content(const char *name);
 
 protected:
 
@@ -392,7 +434,7 @@ private:
     #define LOGGER_MAX_BACKENDS 2
     uint8_t _next_backend;
     AP_Logger_Backend *backends[LOGGER_MAX_BACKENDS];
-    const AP_Int32 &_log_bitmask;
+    const AP_Int32 *_log_bitmask;
 
     enum class Backend_Type : uint8_t {
         NONE       = 0,
@@ -401,56 +443,34 @@ private:
         BLOCK      = (1<<2),
     };
 
+    enum class RCLoggingFlags : uint8_t {
+        HAS_VALID_INPUT = 1U<<0,  // true if the system is receiving good RC values
+        IN_RC_FAILSAFE =  1U<<1,  // true if the system is current in RC failsafe
+    };
+
     /*
      * support for dynamic Write; user-supplies name, format,
      * labels and values in a single function call.
      */
-
-    // this structure looks much like struct LogStructure in
-    // LogStructure.h, however we need to remember a pointer value for
-    // efficiency of finding message types
-    struct log_write_fmt {
-        struct log_write_fmt *next;
-        uint8_t msg_type;
-        uint8_t msg_len;
-        uint8_t sent_mask; // bitmask of backends sent to
-        const char *name;
-        const char *fmt;
-        const char *labels;
-        const char *units;
-        const char *mults;
-    } *log_write_fmts;
     HAL_Semaphore log_write_fmts_sem;
 
     // return (possibly allocating) a log_write_fmt for a name
-    struct log_write_fmt *msg_fmt_for_name(const char *name, const char *labels, const char *units, const char *mults, const char *fmt);
     const struct log_write_fmt *log_write_fmt_for_msg_type(uint8_t msg_type) const;
 
-    const struct LogStructure *structure_for_msg_type(uint8_t msg_type);
+    const struct LogStructure *structure_for_msg_type(uint8_t msg_type) const;
 
     // return a msg_type which is not currently in use (or -1 if none available)
     int16_t find_free_msg_type() const;
 
     // fill LogStructure with information about msg_type
-    bool fill_log_write_logstructure(struct LogStructure &logstruct, const uint8_t msg_type) const;
-
-    // calculate the length of a message using fields specified in
-    // fmt; includes the message header
-    int16_t Write_calc_msg_len(const char *fmt) const;
+    bool fill_logstructure(struct LogStructure &logstruct, const uint8_t msg_type) const;
 
     bool _armed;
 
-    void Write_Baro_instance(uint64_t time_us, uint8_t baro_instance, enum LogMessages type);
-    void Write_IMU_instance(uint64_t time_us,
-                                uint8_t imu_instance,
-                                enum LogMessages type);
-    void Write_Compass_instance(uint64_t time_us,
-                                    uint8_t mag_instance,
-                                    enum LogMessages type);
-    void Write_Current_instance(uint64_t time_us, uint8_t battery_instance);
-    void Write_IMUDT_instance(uint64_t time_us,
-                                  uint8_t imu_instance,
-                                  enum LogMessages type);
+    // state to help us not log unnecessary RCIN values:
+    bool should_log_rcin2;
+
+    void Write_Compass_instance(uint64_t time_us, uint8_t mag_instance);
 
     void backend_starting_new_log(const AP_Logger_Backend *backend);
 
@@ -461,7 +481,7 @@ private:
     void validate_structures(const struct LogStructure *logstructures, const uint8_t num_types);
     void dump_structure_field(const struct LogStructure *logstructure, const char *label, const uint8_t fieldnum);
     void dump_structures(const struct LogStructure *logstructures, const uint8_t num_types);
-    void assert_same_fmt_for_name(const log_write_fmt *f,
+    bool assert_same_fmt_for_name(const log_write_fmt *f,
                                   const char *name,
                                   const char *labels,
                                   const char *units,
@@ -473,12 +493,57 @@ private:
     bool labels_string_is_good(const char *labels) const;
 #endif
 
-    // possibly expensive calls to start log system:
-    void Prep();
-
     bool _writes_enabled:1;
     bool _force_log_disarmed:1;
+    bool _force_long_log_persist:1;
 
+    struct log_write_fmt_strings {
+        char name[LS_NAME_SIZE];
+        char format[LS_FORMAT_SIZE];
+        char labels[LS_LABELS_SIZE];
+        char units[LS_UNITS_SIZE];
+        char multipliers[LS_MULTIPLIERS_SIZE];
+    };
+
+    // remember formats for replay
+    void save_format_Replay(const void *pBuffer);
+
+    // io thread support
+    bool _io_thread_started;
+
+    void start_io_thread(void);
+    void io_thread();
+    bool check_crash_dump_save(void);
+
+#if HAL_LOGGER_FILE_CONTENTS_ENABLED
+    // support for logging file content
+    struct file_list {
+        struct file_list *next;
+        const char *filename;
+        char log_filename[16];
+    };
+    struct FileContent {
+        void reset();
+        void remove_and_free(file_list *victim);
+        struct file_list *head, *tail;
+        int fd{-1};
+        uint32_t offset;
+        bool fast;
+        uint8_t counter;
+        HAL_Semaphore sem;
+    };
+    FileContent normal_file_content;
+    FileContent at_arm_file_content;
+
+    // protect this with a semaphore?
+    bool file_content_prepare_for_arming;
+
+    void file_content_update(void);
+
+    void prepare_at_arming_sys_file_logging();
+
+#endif
+    
     /* support for retrieving logs via mavlink: */
 
     enum class TransferActivity {
@@ -486,6 +551,10 @@ private:
         LISTING, // actively sending log_entry packets
         SENDING, // actively sending log_sending packets
     } transfer_activity = TransferActivity::IDLE;
+
+    // last time we handled a log-transfer-over-mavlink message:
+    uint32_t _last_mavlink_log_transfer_message_handled_ms;
+    bool _warned_log_disarm; // true if we have sent a message warning to disarm for logging
 
     // next log list entry to send
     uint16_t _log_next_list_entry;
@@ -517,13 +586,17 @@ private:
     // last time arming failed, for backends
     uint32_t _last_arming_failure_ms;
 
-    bool should_handle_log_message();
+    // count of number of times we've started logging
+    // can be used by other subsystems to detect if they should log data
+    uint8_t _log_start_count;
+
     void handle_log_message(class GCS_MAVLINK &, const mavlink_message_t &msg);
 
     void handle_log_request_list(class GCS_MAVLINK &, const mavlink_message_t &msg);
     void handle_log_request_data(class GCS_MAVLINK &, const mavlink_message_t &msg);
     void handle_log_request_erase(class GCS_MAVLINK &, const mavlink_message_t &msg);
     void handle_log_request_end(class GCS_MAVLINK &, const mavlink_message_t &msg);
+    void end_log_transfer();
     void handle_log_send_listing(); // handle LISTING state
     void handle_log_sending(); // handle SENDING state
     bool handle_log_send_data(); // send data chunk to client
@@ -534,8 +607,22 @@ private:
 
     /* end support for retrieving logs via mavlink: */
 
+#if HAL_LOGGER_FILE_CONTENTS_ENABLED
+    void log_file_content(FileContent &file_content, const char *filename);
+    void file_content_update(FileContent &file_content);
+#endif
 };
 
 namespace AP {
     AP_Logger &logger();
 };
+
+#define LOGGER_WRITE_ERROR(subsys, err) AP::logger().Write_Error(subsys, err)
+#define LOGGER_WRITE_EVENT(evt) AP::logger().Write_Event(evt)
+
+#else
+
+#define LOGGER_WRITE_ERROR(subsys, err)
+#define LOGGER_WRITE_EVENT(evt)
+
+#endif  // HAL_LOGGING_ENABLED

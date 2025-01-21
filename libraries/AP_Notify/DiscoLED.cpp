@@ -14,9 +14,13 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#include "AP_Notify_config.h"
+
+#if AP_NOTIFY_DISCO_LED_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 #include "DiscoLED.h"
 
 #include <AP_HAL_Linux/Led_Sysfs.h>
@@ -47,7 +51,7 @@ DiscoLED::DiscoLED():
 {
 }
 
-bool DiscoLED::hw_init()
+bool DiscoLED::init()
 {
     /* If led sysfs api is present, use it, else use pwm sysfs api to
        drive Disco leds */
@@ -92,4 +96,4 @@ bool DiscoLED::hw_set_rgb(uint8_t red, uint8_t green, uint8_t blue)
 
     return true;
 }
-#endif
+#endif  // AP_NOTIFY_DISCO_LED_ENABLED

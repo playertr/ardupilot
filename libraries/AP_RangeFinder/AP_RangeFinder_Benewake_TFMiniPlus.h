@@ -16,8 +16,14 @@
  */
 #pragma once
 
+#include "AP_RangeFinder_config.h"
+
+#if AP_RANGEFINDER_BENEWAKE_TFMINIPLUS_ENABLED
+
 #include "AP_RangeFinder.h"
 #include "AP_RangeFinder_Backend.h"
+
+#define TFMINIPLUS_ADDR_DEFAULT              0x10        // TFMini default device id
 
 #include <AP_HAL/utility/sparse-endian.h>
 #include <AP_HAL/I2CDevice.h>
@@ -48,7 +54,7 @@ private:
     bool init();
     void timer();
 
-    bool process_raw_measure(le16_t distance_raw, le16_t strength_raw,
+    void process_raw_measure(le16_t distance_raw, le16_t strength_raw,
                              uint16_t &output_distance_cm);
 
     bool check_checksum(uint8_t *arr, int pkt_len);
@@ -60,3 +66,5 @@ private:
         uint32_t count;
     } accum;
 };
+
+#endif

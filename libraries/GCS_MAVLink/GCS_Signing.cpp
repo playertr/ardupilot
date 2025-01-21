@@ -15,6 +15,10 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "GCS_config.h"
+
+#if HAL_GCS_ENABLED
+
 #include "GCS.h"
 
 extern const AP_HAL::HAL& hal;
@@ -63,7 +67,7 @@ bool GCS_MAVLINK::signing_key_load(struct SigningKey &key)
 /*
   handle a setup_signing message
  */
-void GCS_MAVLINK::handle_setup_signing(const mavlink_message_t &msg)
+void GCS_MAVLINK::handle_setup_signing(const mavlink_message_t &msg) const
 {
     // setting up signing key when armed generally not useful /
     // possibly not a good idea
@@ -76,7 +80,7 @@ void GCS_MAVLINK::handle_setup_signing(const mavlink_message_t &msg)
     mavlink_setup_signing_t packet;
     mavlink_msg_setup_signing_decode(&msg, &packet);
 
-    struct SigningKey key;
+    struct SigningKey key {};
     key.magic = SIGNING_KEY_MAGIC;
     key.timestamp = packet.initial_timestamp;
     memcpy(key.secret_key, packet.secret_key, 32);
@@ -86,8 +90,14 @@ void GCS_MAVLINK::handle_setup_signing(const mavlink_message_t &msg)
         return;
     }
 
-    // activate it immediately
-    load_signing_key();
+    // activate it immediately on all links:
+    for (uint8_t i=0; i<MAVLINK_COMM_NUM_BUFFERS; i++) {
+        GCS_MAVLINK *backend = gcs().chan(i);
+        if (backend == nullptr) {
+            return;
+        }
+        backend->load_signing_key();
+    }
 }
 
 
@@ -126,11 +136,6 @@ void GCS_MAVLINK::load_signing_key(void)
     if (!signing_key_load(key)) {
         return;
     }
-    mavlink_status_t *status = mavlink_get_channel_status(chan);
-    if (status == nullptr) {
-        hal.console->printf("Failed to load signing key - no status");
-        return;        
-    }
     memcpy(signing.secret_key, key.secret_key, 32);
     signing.link_id = (uint8_t)chan;
     // use a timestamp 1 minute past the last recorded
@@ -148,20 +153,13 @@ void GCS_MAVLINK::load_signing_key(void)
             break;
         }
     }
-    
-    // enable signing on all channels
-    for (uint8_t i=0; i<MAVLINK_COMM_NUM_BUFFERS; i++) {
-        mavlink_status_t *cstatus = mavlink_get_channel_status((mavlink_channel_t)(MAVLINK_COMM_0 + i));
-        if (cstatus != nullptr) {
-            if (all_zero) {
-                // disable signing
-                cstatus->signing = nullptr;
-                cstatus->signing_streams = nullptr;
-            } else {
-                cstatus->signing = &signing;
-                cstatus->signing_streams = &signing_streams;
-            }
-        }
+    if (all_zero) {
+        // disable signing
+        _channel_status.signing = nullptr;
+        _channel_status.signing_streams = nullptr;
+    } else {
+        _channel_status.signing = &signing;
+        _channel_status.signing_streams = &signing_streams;
     }
 }
 
@@ -265,3 +263,4 @@ uint8_t GCS_MAVLINK::packet_overhead_chan(mavlink_channel_t chan)
     return MAVLINK_NUM_NON_PAYLOAD_BYTES + reserved_space;
 }
 
+#endif  // HAL_GCS_ENABLED

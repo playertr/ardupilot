@@ -13,24 +13,26 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /*
-  Base class for FrSky D telemetery
+  Base class for FrSky D telemetry
 */
 
 #include "SIM_Frsky_D.h"
 
-#include <stdio.h>
+#include <AP_HAL/AP_HAL.h>
+
+extern const AP_HAL::HAL& hal;
 
 using namespace SITL;
 
 // sadly, this pulls START_STOP_D etc in from the frsky header.
 #include <GCS_MAVLink/GCS.h>
 
-// const uint8_t START_STOP_D = 0x5E;
-// const uint8_t BYTESTUFF_D = 0x5D;
+static const uint8_t START_STOP_D              = 0x5E;
+static const uint8_t BYTESTUFF_D               = 0x5D;
 
 void Frsky_D::handle_data(uint8_t id, uint16_t data)
 {
-    ::fprintf(stderr,
+    hal.console->printf(
               "Frsky: id=%s (0x%02X) data=%u\n",
               dataid_string((DataID)id),
               (unsigned)_id,

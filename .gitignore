@@ -4,6 +4,7 @@
 /Tools/autotest/ch7_mission.txt
 /Tools/autotest/param_metadata/Parameters.html
 /Tools/autotest/param_metadata/Parameters.rst
+/Tools/autotest/param_metadata/ParametersLatex.rst
 /Tools/autotest/param_metadata/Parameters.wiki
 /Tools/autotest/param_metadata/Parameters.md
 /Tools/autotest/param_metadata/apm.pdef.xml
@@ -14,7 +15,10 @@
 /Tools/autotest/jsbsim_start_0.xml
 /Tools/autotest/rover-ch7_mission.txt
 /tmp/*
+# Exclude all bins but allow font bins and bootloaders
 *.bin
+!*_bl.bin
+!font*.bin
 *.d
 *.dfu
 *.dll
@@ -32,6 +36,7 @@
 *.vbrain
 *.vrx
 *.zip
+!Tools/autotest/tilecache/**/*.zip
 *~
 .*.swo
 .*.swp
@@ -42,6 +47,7 @@
 .built
 .context
 .cproject
+.pydevproject
 .depend
 .directory
 .metadata/
@@ -76,7 +82,6 @@ Thumbs.db
 autotest.lck
 build
 cmake_install.cmake
-config.mk
 cscope.in.out
 cscope.out
 cscope.po.out
@@ -87,6 +92,14 @@ logs/
 mav.log
 mav.log.raw
 mav.parm
+mission.stg
+/defaults.parm
+/ArduCopter/defaults.parm
+/ArduPlane/defaults.parm
+/AntennaTracker/defaults.parm
+/ArduSub/defaults.parm
+/Blimp/defaults.parm
+/Rover/defaults.parm
 mk/PX4/ROMFS/default.parm
 module.mk
 serialsent.raw
@@ -97,17 +110,24 @@ test.ArduCopter/*
 GPATH
 GRTAGS
 GTAGS
-config.mk
 *.apj
 .gdbinit
-/.vscode
+.vscode/*
+!.vscode/extensions.json
+/.history
 Parameters.html
 Parameters.md
 Parameters.rst
 Parameters.wiki
+ParameterMetaDataBackup.xml
+ParameterMetaData.xml
 apm.pdef.xml
 apm.pdef.json
 parameters.edn
+LogMessages.html
+LogMessages.rst
+LogMessages.xml
+LogMessages.md
 # JetBrains IDE files
 .idea/*
 # CMake
@@ -119,10 +139,36 @@ way.txt
 *.wbproj
 segv_*out
 /scripts/
+/repl/
 /Rover/scripts/
+/Rover/repl/
 /AntennaTracker/scripts/
+/AntennaTracker/repl/
 /ArduCopter/scripts/
+/ArduCopter/repl/
 /ArduPlane/scripts/
+/ArduPlane/repl/
 /ArduSub/scripts/
+/ArduSub/repl/
 persistent.dat
-dumpstack_*out
+dumpstack*out
+dumpcore*out
+build.tmp.binaries/
+tasklist.json
+modules/esp_idf
+
+# lua-language-server linter
+ScriptingDocs.md
+/lua-language-server/
+repo-LuaLS-lua-language-server.cache
+
+# Ignore Python virtual environments
+#   from: https://github.com/github/gitignore/blob/4488915eec0b3a45b5c63ead28f286819c0917de/Python.gitignore#L125
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+autotest_result_*_junit.xml

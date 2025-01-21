@@ -1,6 +1,6 @@
 # hw definition file for processing by chibios_pins.py
 # Omnibus F4 PRO with on-board current sensor
-# with F405 mcu, mpu6000 imu, bmp280 barometer, 7456 series osd  and sdcard
+# with F405 mcu, mpu6000 and bmi270 imu, bmp280 barometer, 7456 series osd  and sdcard
 
 MCU STM32F4xx STM32F405xx
 
@@ -51,9 +51,11 @@ PA7 SPI1_MOSI SPI1
 PB10 I2C2_SCL I2C2 PULLUP
 PB11 I2C2_SDA I2C2 PULLUP
 
-# use I2C pins as USART3 (SERIAL2) in BRD_ALT_CONFIG=1
+# use I2C pins as USART3 (SERIAL2) in BRD_ALT_CONFIG=1 & 4
 PB10 USART3_TX USART3 ALT(1)
 PB11 USART3_RX USART3 ALT(1)
+PB10 USART3_TX USART3 ALT(4)
+PB11 USART3_RX USART3 ALT(4)
 
 PB15 SPI2_MOSI SPI2
 PB14 SPI2_MISO SPI2
@@ -66,8 +68,14 @@ PA9 USART1_TX USART1
 PC6 USART6_TX USART6
 PC7 USART6_RX USART6
 
-# UART4 available as an alternative config on PA0 with BRD_ALT_CONFIG=2
+# UART4 TX available as an alternative config on PA0 (RSSI pad) with BRD_ALT_CONFIG=2
 PA0 UART4_TX UART4 ALT(2)
+
+# full UART4 also available as alt config on PA0 (RSSI pad) and PA1 (PWM output chan 5) with BRD_ALT_CONFIG=3 & 4
+PA0 UART4_TX UART4 ALT(3)
+PA1 UART4_RX UART4 ALT(3)
+PA0 UART4_TX UART4 ALT(4)
+PA1 UART4_RX UART4 ALT(4)
 
 PA13 JTMS-SWDIO SWD
 PA14 JTCK-SWCLK SWD
@@ -78,7 +86,7 @@ PC12 SPI3_MOSI SPI3
 PC11 SPI3_MISO SPI3
 PC10 SPI3_SCK SPI3
 
-
+define AP_NOTIFY_GPIO_LED_2_ENABLED 1
 PB5 LED_BLUE OUTPUT LOW GPIO(1)
 define HAL_GPIO_A_LED_PIN 1
 
@@ -86,6 +94,9 @@ define HAL_GPIO_A_LED_PIN 1
 define HAL_GPIO_B_LED_PIN 2 
 
 PB4 TIM3_CH1 TIM3 GPIO(58) ALARM LOW
+
+#use LED-STRIP output as general purpose GPIO
+PB6 GP_GPIO OUTPUT LOW GPIO(70)
 
 PA11 OTG_FS_DM OTG1
 PA12 OTG_FS_DP OTG1
@@ -97,31 +108,33 @@ PB8 TIM4_CH3 TIM4 RCININT PULLDOWN LOW
 
 
 # SPI Device table 
+SPIDEV bmi270     SPI1 DEVID1 MPU6000_CS MODE3 1*MHZ 10*MHZ 
 SPIDEV mpu6000    SPI1 DEVID1 MPU6000_CS MODE3 1*MHZ 8*MHZ
 SPIDEV sdcard     SPI2 DEVID2 SDCARD_CS MODE0 400*KHZ 25*MHZ
 SPIDEV bmp280     SPI3 DEVID3 BMP280_CS MODE3 1*MHZ 8*MHZ
 SPIDEV osd        SPI3 DEVID4 OSD_CS MODE0 10*MHZ 10*MHZ
 
-# one IMU
+# one IMU  BMI270 or MPU6000 
 IMU Invensense SPI:mpu6000 ROTATION_YAW_180
+IMU BMI270     SPI:bmi270  ROTATION_ROLL_180
+
 
 # one baro
 BARO BMP280 SPI:bmp280
+define AP_BARO_BACKEND_DEFAULT_ENABLED 0
+define AP_BARO_BMP280_ENABLED 1
 
 # no built-in compass, but probe the i2c bus for all possible
 # external compass types
 define ALLOW_ARM_NO_COMPASS
-define HAL_COMPASS_DEFAULT HAL_COMPASS_NONE
 define HAL_PROBE_EXTERNAL_I2C_COMPASSES
 define HAL_I2C_INTERNAL_MASK 0
 define HAL_COMPASS_AUTO_ROT_DEFAULT 2
 
-define STORAGE_FLASH_PAGE 1
+STORAGE_FLASH_PAGE 1
 define HAL_STORAGE_SIZE 15360
 
 define HAL_OS_FATFS_IO 1
-define HAL_BOARD_LOG_DIRECTORY "/APM/LOGS"
-define HAL_BOARD_TERRAIN_DIRECTORY "/APM/TERRAIN"
 
 # define default battery setup
 define HAL_BATT_VOLT_PIN 12
@@ -132,23 +145,10 @@ define HAL_BATT_CURR_SCALE 18.2
 define OSD_ENABLED 1
 define HAL_OSD_TYPE_DEFAULT 1
 
-#To complementary channels work we define this
-define STM32_PWM_USE_ADVANCED TRUE
-
-define BOARD_PWM_COUNT_DEFAULT 8
-
 #font for the osd
-ROMFS_WILDCARD libraries/AP_OSD/fonts/font*.bin
-
-# disable SMBUS and fuel battery monitors to save flash
-define HAL_BATTMON_SMBUS_ENABLE 0
-define HAL_BATTMON_FUEL_ENABLE 0
+ROMFS_WILDCARD libraries/AP_OSD/fonts/font0.bin
 
 # disable parachute and sprayer to save flash
 define HAL_PARACHUTE_ENABLED 0
-define HAL_SPRAYER_ENABLED 0
 
-define HAL_NAVEKF2_AVAILABLE 0
-
-# reduce max size of embedded params for apj_tool.py
-define AP_PARAM_MAX_EMBEDDED_PARAM 1024
+include ../include/minimize_fpv_osd.inc

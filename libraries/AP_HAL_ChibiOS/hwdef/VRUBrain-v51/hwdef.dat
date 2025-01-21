@@ -1,8 +1,6 @@
 # hw definition file for processing by chibios_hwdef.py
 # for VRUBRAINv51 hardware
 
-define CONFIG_HAL_BOARD_SUBTYPE HAL_BOARD_SUBTYPE_CHIBIOS_VRUBRAIN_V51
-
 # MCU class and specific type
 MCU STM32F4xx STM32F407xx
 
@@ -20,7 +18,6 @@ FLASH_SIZE_KB 1024
 USB_VENDOR 0x27AC
 USB_PRODUCT 0x1351
 USB_STRING_MANUFACTURER "Laser Navigation"
-USB_STRING_SERIAL  "%SERIAL%"
 
 # ChibiOS system timer
 STM32_ST_USE_TIMER 5
@@ -75,7 +72,7 @@ STDOUT_BAUDRATE 57600
 #PC4
  PC5  LED_GREEN OUTPUT GPIO(25)
 #PC6
- PC7  TIM8_CH2 TIM8 RCIN FLOAT LOW
+ PC7  TIM8_CH2 TIM8 RCIN PULLDOWN LOW
  PC8  RELAY_1   OUTPUT LOW GPIO(33)
  PC9  RELAY_2   OUTPUT LOW GPIO(34)
  PC10 SPI3_SCK SPI3
@@ -129,24 +126,19 @@ SPIDEV sdcard      SPI3 DEVID1  SDCARD_CS  MODE0 400*KHZ  25*MHZ
 
 define HAL_CHIBIOS_ARCH_UBRAINV51 1
 
-define HAL_BOARD_LOG_DIRECTORY "/APM/LOGS"
-define HAL_BOARD_TERRAIN_DIRECTORY "/APM/TERRAIN"
-
 define HAL_STORAGE_SIZE      15360
-define STORAGE_FLASH_PAGE    2
+STORAGE_FLASH_PAGE    2
 # reserve 32k for bootloader and 32k for flash storage
 FLASH_RESERVE_START_KB 64
 
 # enable RAMTROM parameter storage
 #define HAL_WITH_RAMTRON 1
 
-define AP_PARAM_MAX_EMBEDDED_PARAM 1024
-
 # enable FAT filesystem
 define HAL_OS_FATFS_IO 1
 
-define HAL_GPIO_LED_ON  0
-define HAL_GPIO_LED_OFF 1
+define AP_NOTIFY_VRBOARD_LED_ENABLED 1
+define AP_NOTIFY_EXTERNALLED_ENABLED 1
 
 define HAL_GPIO_A_LED_PIN  25
 define HAL_GPIO_B_LED_PIN  26
@@ -161,8 +153,8 @@ define RELAY2_PIN_DEFAULT  34
 #define RELAY3_PIN_DEFAULT  35
 
 define HAL_BUZZER_PIN 32
-define HAL_BUZZER_ON  1
-define HAL_BUZZER_OFF 0
+
+
 
 # battery setup
 define HAL_BATT_VOLT_PIN 10
@@ -170,8 +162,10 @@ define HAL_BATT_CURR_PIN -1
 define HAL_BATT_VOLT_SCALE 10.1
 define HAL_BATT_CURR_SCALE 17.0
 
-define STM32_PWM_USE_ADVANCED TRUE
+# minimal drivers to reduce flash usage
+include ../include/minimize_features.inc
 
-# 12 PWM available by default
-define BOARD_PWM_COUNT_DEFAULT 14
-
+# save some flash
+define AC_PRECLAND_ENABLED 0
+define AP_ICENGINE_ENABLED 0
+define AP_OPTICALFLOW_ENABLED 0

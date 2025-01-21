@@ -49,6 +49,11 @@ public:
         return typesafe_index(p++);
     }
 
+    typesafe_index operator%(const base_type& val)
+    {
+        return typesafe_index(p % val);
+    }
+
     bool operator<(const base_type& val) const
     {
         return (p<val);
@@ -93,7 +98,7 @@ private:
     base_type p;
 };
 
-/// This template associates the the base_type array with accessor_type(index).
+/// This template associates the base_type array with accessor_type(index).
 /// So the elements can be accessed using [] only using accessor_type index
 /// _priv_instance is kept public for use in Parameter declaration.
 ///

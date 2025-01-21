@@ -12,19 +12,21 @@ public:
     using AP_Avoidance::AP_Avoidance;
 
     /* Do not allow copies */
-    AP_Avoidance_Copter(const AP_Avoidance_Copter &other) = delete;
-    AP_Avoidance_Copter &operator=(const AP_Avoidance_Copter&) = delete;
+    CLASS_NO_COPY(AP_Avoidance_Copter);
 
 private:
     // helper function to set modes and always succeed
     void set_mode_else_try_RTL_else_LAND(Mode::Number mode);
+
+    // get minimum limit altitude allowed on descend
+    int32_t get_altitude_minimum() const;
 
 protected:
     // override avoidance handler
     MAV_COLLISION_ACTION handle_avoidance(const AP_Avoidance::Obstacle *obstacle, MAV_COLLISION_ACTION requested_action) override;
 
     // override recovery handler
-    void handle_recovery(uint8_t recovery_action) override;
+    void handle_recovery(RecoveryAction recovery_action) override;
 
     // check flight mode is avoid_adsb
     bool check_flightmode(bool allow_mode_change);

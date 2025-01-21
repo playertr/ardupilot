@@ -16,9 +16,12 @@
 */
 #pragma once
 
-#include <AP_HAL/AP_HAL.h>
+#include "AP_Notify_config.h"
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
+#if AP_NOTIFY_DISCO_LED_ENABLED
+
+#include <AP_HAL/AP_HAL_Boards.h>
+
 #include <AP_HAL_Linux/Led_Sysfs.h>
 #include <AP_HAL_Linux/PWM_Sysfs.h>
 
@@ -28,9 +31,9 @@ class DiscoLED: public RGBLed
 {
 public:
     DiscoLED();
+    bool init(void) override;
 
 protected:
-    bool hw_init(void) override;
     bool hw_set_rgb(uint8_t r, uint8_t g, uint8_t b) override;
 
 private:
@@ -53,4 +56,4 @@ private:
 
     enum led_backend backend;
 };
-#endif
+#endif  // AP_NOTIFY_DISCO_LED_ENABLED

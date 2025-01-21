@@ -1,9 +1,15 @@
+#include "AP_Compass_config.h"
+
+#if AP_COMPASS_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 
 #include "AP_Compass.h"
 #include "AP_Compass_Backend.h"
 
 #include <AP_BattMonitor/AP_BattMonitor.h>
+#include <AP_Vehicle/AP_Vehicle_Type.h>
+#include <AP_BoardConfig/AP_BoardConfig.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -20,13 +26,32 @@ void AP_Compass_Backend::rotate_field(Vector3f &mag, uint8_t instance)
     }
     mag.rotate(state.rotation);
 
-    if (!state.external) {
-        // and add in AHRS_ORIENTATION setting if not an external compass
-        if (_compass._board_orientation == ROTATION_CUSTOM && _compass._custom_rotation) {
-            mag = *_compass._custom_rotation * mag;
-        } else {
-            mag.rotate(_compass._board_orientation);
+#ifdef HAL_HEATER_MAG_OFFSET
+    /*
+      apply compass compensations for boards that have a heater which
+      interferes with an internal compass. This needs to be applied
+      before the board orientation so it is independent of
+      AHRS_ORIENTATION
+     */
+    if (!is_external(instance)) {
+        const uint32_t dev_id = uint32_t(_compass._state[Compass::StateIndex(instance)].dev_id);
+        static const struct offset {
+            uint32_t dev_id;
+            Vector3f ofs;
+        } offsets[] = HAL_HEATER_MAG_OFFSET;
+        const auto *bc = AP::boardConfig();
+        if (bc) {
+            for (const auto &o : offsets) {
+                if (o.dev_id == dev_id) {
+                    mag += o.ofs * bc->get_heater_duty_cycle() * 0.01;
+                }
+            }
         }
+    }
+#endif
+
+    if (!state.external) {
+        mag.rotate(_compass._board_orientation);
     } else {
         // add user selectable orientation
         mag.rotate((enum Rotation)state.orientation.get());
@@ -35,14 +60,16 @@ void AP_Compass_Backend::rotate_field(Vector3f &mag, uint8_t instance)
 
 void AP_Compass_Backend::publish_raw_field(const Vector3f &mag, uint8_t instance)
 {
-    Compass::mag_state &state = _compass._state[Compass::StateIndex(instance)];
-
     // note that we do not set last_update_usec here as otherwise the
     // EKF and DCM would end up consuming compass data at the full
     // sensor rate. We want them to consume only the filtered fields
-    state.last_update_ms = AP_HAL::millis();
 #if COMPASS_CAL_ENABLED
-    _compass._calibrator[_compass._get_priority(Compass::StateIndex(instance))].new_sample(mag);
+    auto& cal = _compass._calibrator[_compass._get_priority(Compass::StateIndex(instance))];
+    if (cal != nullptr) {
+        Compass::mag_state &state = _compass._state[Compass::StateIndex(instance)];
+        state.last_update_ms = AP_HAL::millis();
+        cal->new_sample(mag);
+    }
 #endif
 }
 
@@ -50,13 +77,11 @@ void AP_Compass_Backend::correct_field(Vector3f &mag, uint8_t i)
 {
     Compass::mag_state &state = _compass._state[Compass::StateIndex(i)];
 
-    if (state.diagonals.get().is_zero()) {
-        state.diagonals.set(Vector3f(1.0f,1.0f,1.0f));
-    }
-
     const Vector3f &offsets = state.offset.get();
+#if AP_COMPASS_DIAGONALS_ENABLED
     const Vector3f &diagonals = state.diagonals.get();
     const Vector3f &offdiagonals = state.offdiagonals.get();
+#endif
 
     // add in the basic offsets
     mag += offsets;
@@ -67,14 +92,18 @@ void AP_Compass_Backend::correct_field(Vector3f &mag, uint8_t i)
         mag *= state.scale_factor;
     }
 
-    // apply eliptical correction
-    Matrix3f mat(
-        diagonals.x, offdiagonals.x, offdiagonals.y,
-        offdiagonals.x,    diagonals.y, offdiagonals.z,
-        offdiagonals.y, offdiagonals.z,    diagonals.z
-    );
+#if AP_COMPASS_DIAGONALS_ENABLED
+    // apply elliptical correction
+    if (!diagonals.is_zero()) {
+        Matrix3f mat(
+            diagonals.x,    offdiagonals.x, offdiagonals.y,
+            offdiagonals.x, diagonals.y,    offdiagonals.z,
+            offdiagonals.y, offdiagonals.z, diagonals.z
+            );
 
-    mag = mat * mag;
+        mag = mat * mag;
+    }
+#endif
 
 #if COMPASS_MOT_ENABLED
     const Vector3f &mot = state.motor_compensation.get();
@@ -98,7 +127,7 @@ void AP_Compass_Backend::correct_field(Vector3f &mag, uint8_t i)
     }
 
     /*
-      we apply the motor offsets after we apply the eliptical
+      we apply the motor offsets after we apply the elliptical
       correction. This is needed to match the way that the motor
       compensation values are calculated, as they are calculated based
       on final field outputs, not on the raw outputs
@@ -192,7 +221,6 @@ void AP_Compass_Backend::set_dev_id(uint8_t instance, uint32_t dev_id)
 {
     _compass._state[Compass::StateIndex(instance)].dev_id.set_and_notify(dev_id);
     _compass._state[Compass::StateIndex(instance)].detected_dev_id = dev_id;
-    _compass._state[Compass::StateIndex(instance)].expected_dev_id = dev_id;
 }
 
 /*
@@ -227,7 +255,7 @@ void AP_Compass_Backend::set_rotation(uint8_t instance, enum Rotation rotation)
 static constexpr float FILTER_KOEF = 0.1f;
 
 /* Check that the compass value is valid by using a mean filter. If
- * the value is further than filtrer_range from mean value, it is
+ * the value is further than filter_range from mean value, it is
  * rejected. 
 */
 bool AP_Compass_Backend::field_ok(const Vector3f &field)
@@ -270,3 +298,5 @@ enum Rotation AP_Compass_Backend::get_board_orientation(void) const
 {
     return _compass._board_orientation;
 }
+
+#endif  // AP_COMPASS_ENABLED

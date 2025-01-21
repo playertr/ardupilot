@@ -52,6 +52,7 @@
 #include "hal.h"
 #include <string.h>
 #include "stm32_util.h"
+#include "hrt.h"
 
 #include <assert.h>
 
@@ -73,7 +74,9 @@
 #define STM32_FLASH_SIZE    KB(BOARD_FLASH_SIZE)
 
 // optionally disable interrupts during flash writes
-#define STM32_FLASH_DISABLE_ISR 0
+#ifndef STM32_FLASH_DISABLE_ISR
+#define STM32_FLASH_DISABLE_ISR 1
+#endif
 
 // the 2nd bank of flash needs to be handled differently
 #define STM32_FLASH_BANK2_START (STM32_FLASH_BASE+0x00080000)
@@ -100,7 +103,11 @@ static const uint32_t flash_memmap[STM32_FLASH_NPAGES] = { KB(16), KB(16), KB(16
 #endif
 
 #elif defined(STM32F7)
-#if BOARD_FLASH_SIZE == 1024
+#if BOARD_FLASH_SIZE == 512
+#define STM32_FLASH_NPAGES  8
+static const uint32_t flash_memmap[STM32_FLASH_NPAGES] = { KB(16), KB(16), KB(16), KB(16), KB(64), KB(128), KB(128), KB(128) };
+
+#elif BOARD_FLASH_SIZE == 1024
 #define STM32_FLASH_NPAGES  8
 static const uint32_t flash_memmap[STM32_FLASH_NPAGES] = { KB(32), KB(32), KB(32), KB(32), KB(128), KB(256), KB(256), KB(256) };
 
@@ -111,9 +118,18 @@ static const uint32_t flash_memmap[STM32_FLASH_NPAGES] = { KB(32), KB(32), KB(32
 #else
 #error "BOARD_FLASH_SIZE invalid"
 #endif
+#elif defined(STM32H730xx) || defined(STM32H750xx)
+#define STM32_FLASH_NPAGES 1
+#define STM32_FLASH_NBANKS 1
+#define STM32_FLASH_FIXED_PAGE_SIZE 128
+#elif defined(STM32H7A3xx)
+#define STM32_FLASH_NPAGES (BOARD_FLASH_SIZE / 8)
+#define STM32_FLASH_NBANKS (BOARD_FLASH_SIZE/1024)
+#define STM32_FLASH_FIXED_PAGE_SIZE 8
 #elif defined(STM32H7)
 #define STM32_FLASH_NPAGES  (BOARD_FLASH_SIZE / 128)
 #define STM32_FLASH_FIXED_PAGE_SIZE 128
+#define STM32_FLASH_NBANKS (BOARD_FLASH_SIZE/1024)
 #elif defined(STM32F100_MCUCONF) || defined(STM32F103_MCUCONF)
 #define STM32_FLASH_NPAGES BOARD_FLASH_SIZE
 #define STM32_FLASH_FIXED_PAGE_SIZE 1
@@ -123,13 +139,33 @@ static const uint32_t flash_memmap[STM32_FLASH_NPAGES] = { KB(32), KB(32), KB(32
 #elif defined(STM32F303_MCUCONF)
 #define STM32_FLASH_NPAGES (BOARD_FLASH_SIZE/2)
 #define STM32_FLASH_FIXED_PAGE_SIZE 2
+#elif defined(STM32G4)
+#define STM32_FLASH_NPAGES (BOARD_FLASH_SIZE/2)
+#define STM32_FLASH_FIXED_PAGE_SIZE 2
+#elif defined(STM32L4PLUS)
+#define STM32_FLASH_NPAGES (BOARD_FLASH_SIZE/4)
+#define STM32_FLASH_FIXED_PAGE_SIZE 4 
+#elif defined(STM32L4)
+#define STM32_FLASH_NPAGES (BOARD_FLASH_SIZE/2)
+#define STM32_FLASH_FIXED_PAGE_SIZE 2
 #else
 #error "Unsupported processor for flash.c"
 #endif
 
+// for now all multi-bank MCUs have 1MByte banks
+#ifdef STM32_FLASH_FIXED_PAGE_SIZE
+#define STM32_FLASH_FIXED_PAGE_PER_BANK (1024 / STM32_FLASH_FIXED_PAGE_SIZE)
+#endif
+
+#ifndef STM32_FLASH_NBANKS
+#define STM32_FLASH_NBANKS 2
+#endif
+
+#if defined(__GNUC__) && __GNUC__ >= 6
 #ifdef STORAGE_FLASH_PAGE
 static_assert(STORAGE_FLASH_PAGE < STM32_FLASH_NPAGES,
               "STORAGE_FLASH_PAGE out of range");
+#endif
 #endif
 
 // keep a cache of the page addresses
@@ -145,6 +181,12 @@ static bool flash_keep_unlocked;
 #endif
 #ifndef FLASH_KEY2
 #define FLASH_KEY2      0xCDEF89AB
+#endif
+#ifndef FLASH_OPTKEY1
+#define FLASH_OPTKEY1      0x08192A3B
+#endif
+#ifndef FLASH_OPTKEY2
+#define FLASH_OPTKEY2      0x4C5D6E7F
 #endif
 
 /* Some compiler options will convert short loads and stores into byte loads
@@ -182,8 +224,11 @@ static void stm32_flash_wait_idle(void)
 {
     __DSB();
 #if defined(STM32H7)
-    while ((FLASH->SR1 & (FLASH_SR_BSY|FLASH_SR_QW|FLASH_SR_WBNE)) ||
-           (FLASH->SR2 & (FLASH_SR_BSY|FLASH_SR_QW|FLASH_SR_WBNE))) {
+    while ((FLASH->SR1 & (FLASH_SR_BSY|FLASH_SR_QW|FLASH_SR_WBNE))
+#if STM32_FLASH_NBANKS > 1
+            || (FLASH->SR2 & (FLASH_SR_BSY|FLASH_SR_QW|FLASH_SR_WBNE))
+#endif
+            ) {
         // nop
     }
 #else
@@ -197,7 +242,11 @@ static void stm32_flash_clear_errors(void)
 {
 #if defined(STM32H7)
     FLASH->CCR1 = ~0;
+#if STM32_FLASH_NBANKS > 1
     FLASH->CCR2 = ~0;
+#endif
+#elif defined (STM32L4PLUS)
+    FLASH->SR = 0x0000C3FBU;
 #else
     FLASH->SR = 0xF3;
 #endif
@@ -216,11 +265,13 @@ static void stm32_flash_unlock(void)
         FLASH->KEYR1 = FLASH_KEY1;
         FLASH->KEYR1 = FLASH_KEY2;
     }
+#if STM32_FLASH_NBANKS > 1
     if (FLASH->CR2 & FLASH_CR_LOCK) {
         /* Unlock sequence */
         FLASH->KEYR2 = FLASH_KEY1;
         FLASH->KEYR2 = FLASH_KEY2;
     }
+#endif
 #else
     if (FLASH->CR & FLASH_CR_LOCK) {
         /* Unlock sequence */
@@ -244,12 +295,16 @@ void stm32_flash_lock(void)
     if (FLASH->SR1 & FLASH_SR_QW) {
         FLASH->CR1 |= FLASH_CR_FW;
     }
+#if STM32_FLASH_NBANKS > 1
     if (FLASH->SR2 & FLASH_SR_QW) {
         FLASH->CR2 |= FLASH_CR_FW;
     }
+#endif
     stm32_flash_wait_idle();
     FLASH->CR1 |= FLASH_CR_LOCK;
+#if STM32_FLASH_NBANKS > 1
     FLASH->CR2 |= FLASH_CR_LOCK;
+#endif
 #else
     stm32_flash_wait_idle();
     FLASH->CR |= FLASH_CR_LOCK;
@@ -263,7 +318,68 @@ void stm32_flash_lock(void)
 #endif
 }
 
+#if (defined(STM32H7) && HAL_FLASH_PROTECTION) || defined(HAL_FLASH_SET_NRST_MODE)
+static void stm32_flash_wait_opt_idle(void)
+{
+    __DSB();
+#if defined(STM32H7)
+    while (FLASH->OPTSR_CUR & FLASH_OPTSR_OPT_BUSY) {
+        // nop
+    }
+#else
+    while (FLASH->SR & FLASH_SR_BSY) {
+        // nop
+    }
+#endif
+}
 
+static void stm32_flash_opt_clear_errors(void)
+{
+#if defined(STM32H7)
+    FLASH->OPTCCR = FLASH_OPTCCR_CLR_OPTCHANGEERR;
+#else
+    FLASH->SR |= FLASH_SR_OPERR;
+#endif
+}
+
+static bool stm32_flash_unlock_options(void)
+{
+    stm32_flash_wait_opt_idle();
+
+#if defined(STM32H7)
+    if (FLASH->OPTCR & FLASH_OPTCR_OPTLOCK) {
+        /* Unlock sequence */
+        FLASH->OPTKEYR = FLASH_OPTKEY1;
+        FLASH->OPTKEYR = FLASH_OPTKEY2;
+    }
+
+    if (FLASH->OPTSR_CUR & FLASH_OPTSR_OPTCHANGEERR) {
+        return false;
+    }
+#else
+    FLASH->OPTKEYR = FLASH_OPTKEY1;
+    FLASH->OPTKEYR = FLASH_OPTKEY2;
+    stm32_flash_wait_opt_idle();
+#endif
+    return true;
+}
+
+static bool stm32_flash_lock_options(void)
+{
+    stm32_flash_wait_opt_idle();
+
+#if defined(STM32H7)
+    FLASH->OPTCR |= FLASH_OPTCR_OPTLOCK;
+
+    if (FLASH->OPTSR_CUR & FLASH_OPTSR_OPTCHANGEERR) {
+        return false;
+    }
+#else
+    FLASH->CR |= FLASH_CR_OPTLOCK;
+#endif
+    return true;
+}
+#endif
 
 /*
   get the memory address of a page
@@ -332,6 +448,69 @@ bool stm32_flash_ispageerased(uint32_t page)
     return true;
 }
 
+#ifndef HAL_BOOTLOADER_BUILD
+static uint32_t last_erase_ms;
+#endif
+
+#if defined(STM32H7)
+
+/*
+    corrupt a flash to trigger ECC fault
+*/
+void stm32_flash_corrupt(uint32_t addr)
+{
+    stm32_flash_unlock();
+
+    volatile uint32_t *CR = &FLASH->CR1;
+    volatile uint32_t *CCR = &FLASH->CCR1;
+    volatile uint32_t *SR = &FLASH->SR1;
+#if STM32_FLASH_NBANKS > 1
+    if (addr - STM32_FLASH_BASE >= STM32_FLASH_FIXED_PAGE_PER_BANK * STM32_FLASH_FIXED_PAGE_SIZE * 1024) {
+        CR = &FLASH->CR2;
+        CCR = &FLASH->CCR2;
+        SR = &FLASH->SR2;
+    }
+#endif
+    stm32_flash_wait_idle();
+
+    *CCR = ~0;
+    *CR |= FLASH_CR_PG;
+
+    for (uint32_t i=0; i<2; i++) {
+        while (*SR & (FLASH_SR_BSY|FLASH_SR_QW)) ;
+        putreg32(0xAAAA5555, addr);
+        if (*SR & FLASH_SR_INCERR) {
+            // clear the error
+            *SR &= ~FLASH_SR_INCERR;
+        }
+        addr += 4;
+    }
+
+    *CR |= FLASH_CR_FW;  // force write
+    stm32_flash_wait_idle();
+
+    for (uint32_t i=0; i<2; i++) {
+        while (*SR & (FLASH_SR_BSY|FLASH_SR_QW)) ;
+        putreg32(0x5555AAAA, addr);
+        if (*SR & FLASH_SR_INCERR) {
+            // clear the error
+            *SR &= ~FLASH_SR_INCERR;
+        }
+        addr += 4;
+    }
+
+    *CR |= FLASH_CR_FW;  // force write
+    stm32_flash_wait_idle();
+    __DSB();
+
+    stm32_flash_wait_idle();
+    *CCR = ~0;
+    *CR &= ~FLASH_CR_PG;
+
+    stm32_flash_lock();
+}
+#endif
+
 /*
   erase a page
  */
@@ -340,6 +519,10 @@ bool stm32_flash_erasepage(uint32_t page)
     if (page >= STM32_FLASH_NPAGES) {
         return false;
     }
+
+#ifndef HAL_BOOTLOADER_BUILD
+    last_erase_ms = hrt_millis32();
+#endif
 
 #if STM32_FLASH_DISABLE_ISR
     syssts_t sts = chSysGetStatusAndLockX();
@@ -351,31 +534,38 @@ bool stm32_flash_erasepage(uint32_t page)
     stm32_flash_clear_errors();
 
 #if defined(STM32H7)
-    if (page < 8) {
+    if (page < STM32_FLASH_FIXED_PAGE_PER_BANK) {
         // first bank
         FLASH->SR1 = ~0;
 
         stm32_flash_wait_idle();
 
-        uint32_t snb = page << 8;
-
         // use 32 bit operations
-        FLASH->CR1 = FLASH_CR_PSIZE_1 | snb | FLASH_CR_SER;
+#ifdef FLASH_CR_PSIZE_1
+        FLASH->CR1 = FLASH_CR_PSIZE_1 | (page<<FLASH_CR_SNB_Pos) | FLASH_CR_SER;
+#else
+        FLASH->CR1 = (page<<FLASH_CR_SNB_Pos) | FLASH_CR_SER;
+#endif
         FLASH->CR1 |= FLASH_CR_START;
         while (FLASH->SR1 & FLASH_SR_QW) ;
-    } else {
+    }
+#if STM32_FLASH_NBANKS > 1
+    else {
         // second bank
         FLASH->SR2 = ~0;
 
         stm32_flash_wait_idle();
 
-        uint32_t snb = (page-8) << 8;
-
         // use 32 bit operations
-        FLASH->CR2 = FLASH_CR_PSIZE_1 | snb | FLASH_CR_SER;
+#ifdef FLASH_CR_PSIZE_1
+        FLASH->CR2 = FLASH_CR_PSIZE_1 | ((page-STM32_FLASH_FIXED_PAGE_PER_BANK)<<FLASH_CR_SNB_Pos) | FLASH_CR_SER;
+#else
+        FLASH->CR2 = ((page-STM32_FLASH_FIXED_PAGE_PER_BANK)<<FLASH_CR_SNB_Pos) | FLASH_CR_SER;
+#endif
         FLASH->CR2 |= FLASH_CR_START;
         while (FLASH->SR2 & FLASH_SR_QW) ;
     }
+#endif
 #elif defined(STM32F1) || defined(STM32F3)
     FLASH->CR = FLASH_CR_PER;
     FLASH->AR = stm32_flash_getpageaddr(page);
@@ -386,6 +576,32 @@ bool stm32_flash_erasepage(uint32_t page)
 
     // use 32 bit operations
     FLASH->CR = FLASH_CR_PSIZE_1 | snb | FLASH_CR_SER;
+    FLASH->CR |= FLASH_CR_STRT;
+#elif defined(STM32G4)
+    FLASH->CR = FLASH_CR_PER;
+#ifdef FLASH_CR_BKER_Pos
+    /*
+      we assume dual bank mode, we set the bottom 7 bits of the page
+      into PNB and the 8th bit into BKER
+    */
+    FLASH->CR |= (page&0x7F)<<FLASH_CR_PNB_Pos | (page>>7)<<FLASH_CR_BKER_Pos;
+#else
+    // this is a single bank only varient
+    FLASH->CR |= page<<FLASH_CR_PNB_Pos;
+#endif
+    FLASH->CR |= FLASH_CR_STRT;
+#elif defined(STM32L4PLUS)
+    FLASH->CR |= FLASH_CR_PER;
+    if (page >= 256) {
+      FLASH->CR |= FLASH_CR_BKER;
+    }
+    FLASH->CR &= ~FLASH_CR_PNB;
+
+    FLASH->CR |= (page<256 ?page: (page -256))<<FLASH_CR_PNB_Pos;
+    FLASH->CR |= FLASH_CR_STRT;
+#elif defined(STM32L4)
+    FLASH->CR = FLASH_CR_PER;
+    FLASH->CR |= page<<FLASH_CR_PNB_Pos;
     FLASH->CR |= FLASH_CR_STRT;
 #else
 #error "Unsupported MCU"
@@ -399,33 +615,51 @@ bool stm32_flash_erasepage(uint32_t page)
 #if STM32_FLASH_DISABLE_ISR
     chSysRestoreStatusX(sts);
 #endif
+
+#ifndef HAL_BOOTLOADER_BUILD
+    last_erase_ms = hrt_millis32();
+#endif
+
     return stm32_flash_ispageerased(page);
 }
 
 
 #if defined(STM32H7)
+// Check that the flash line is erased as writing to an un-erased line causes flash corruption
+static bool stm32h7_check_all_ones(uint32_t addr, uint32_t words)
+{
+    for (uint32_t i = 0; i < words; i++) {
+        // check that the byte was erased
+        if (getreg32(addr) != 0xFFFFFFFF) {
+            return false;
+        }
+        addr += 4;
+    }
+    return true;
+}
+
 /*
   the H7 needs special handling, and only writes 32 bytes at a time
  */
 static bool stm32h7_flash_write32(uint32_t addr, const void *buf)
 {
-    volatile uint32_t *CR, *CCR, *SR;
-    if (addr - STM32_FLASH_BASE < 8 * STM32_FLASH_FIXED_PAGE_SIZE * 1024) {
-        CR = &FLASH->CR1;
-        CCR = &FLASH->CCR1;
-        SR = &FLASH->SR1;
-    } else {
+    volatile uint32_t *CR = &FLASH->CR1;
+    volatile uint32_t *CCR = &FLASH->CCR1;
+    volatile uint32_t *SR = &FLASH->SR1;
+#if STM32_FLASH_NBANKS > 1
+    if (addr - STM32_FLASH_BASE >= STM32_FLASH_FIXED_PAGE_PER_BANK * STM32_FLASH_FIXED_PAGE_SIZE * 1024) {
         CR = &FLASH->CR2;
         CCR = &FLASH->CCR2;
         SR = &FLASH->SR2;
     }
+#endif
     stm32_flash_wait_idle();
+
     *CCR = ~0;
     *CR |= FLASH_CR_PG;
 
     const uint32_t *v = (const uint32_t *)buf;
-    uint8_t i;
-    for (i=0; i<8; i++) {
+    for (uint8_t i=0; i<8; i++) {
         while (*SR & (FLASH_SR_BSY|FLASH_SR_QW)) ;
         putreg32(*v, addr);
         v++;
@@ -446,23 +680,48 @@ static bool stm32_flash_write_h7(uint32_t addr, const void *buf, uint32_t count)
         // only allow 256 bit aligned writes
         return false;
     }
+
     stm32_flash_unlock();
+    bool success = true;
+
     while (count >= 32) {
-        if (memcmp((void*)addr, b, 32) != 0 &&
-            !stm32h7_flash_write32(addr, b)) {
-            return false;
+        const uint8_t *b2 = (const uint8_t *)addr;
+        // if the bytes already match then skip this chunk
+        if (memcmp(b, b2, 32) != 0) {
+            // check for erasure
+            if (!stm32h7_check_all_ones(addr, 8)) {
+                return false;
+            }
+
+#if STM32_FLASH_DISABLE_ISR
+            syssts_t sts = chSysGetStatusAndLockX();
+#endif
+
+            bool ok = stm32h7_flash_write32(addr, b);
+
+#if STM32_FLASH_DISABLE_ISR
+            chSysRestoreStatusX(sts);
+#endif
+
+            if (!ok) {
+                success = false;
+                goto failed;
+            }
+            // check contents
+            if (memcmp((void*)addr, b, 32) != 0) {
+                success = false;
+                goto failed;
+            }
         }
-        // check contents
-        if (memcmp((void *)addr, b, 32) != 0) {
-            stm32_flash_lock();
-            return false;
-        }
+
         addr += 32;
         count -= 32;
         b += 32;
     }
+
+failed:
     stm32_flash_lock();
-    return true;
+    return success;
 }
 
 #endif // STM32H7
@@ -477,7 +736,7 @@ static bool stm32_flash_write_f4f7(uint32_t addr, const void *buf, uint32_t coun
         return false;
     }
 
-    if ((addr+count) >= STM32_FLASH_BASE+STM32_FLASH_SIZE) {
+    if ((addr+count) > STM32_FLASH_BASE+STM32_FLASH_SIZE) {
         return false;
     }
 
@@ -578,7 +837,7 @@ static bool stm32_flash_write_f1(uint32_t addr, const void *buf, uint32_t count)
         return false;
     }
 
-    if ((addr+count) >= STM32_FLASH_BASE+STM32_FLASH_SIZE) {
+    if ((addr+count) > STM32_FLASH_BASE+STM32_FLASH_SIZE) {
         _flash_fail_line = __LINE__;
         return false;
     }
@@ -629,6 +888,85 @@ failed:
 }
 #endif // STM32F1 or STM32F3
 
+#if defined(STM32G4) || defined(STM32L4) || defined(STM32L4PLUS)
+static bool stm32_flash_write_g4(uint32_t addr, const void *buf, uint32_t count)
+{
+    uint32_t *b = (uint32_t *)buf;
+
+    /* STM32G4 requires double-word access */
+    if ((count & 7) || (addr & 7)) {
+        _flash_fail_line = __LINE__;
+        return false;
+    }
+
+    if ((addr+count) > STM32_FLASH_BASE+STM32_FLASH_SIZE) {
+        _flash_fail_line = __LINE__;
+        return false;
+    }
+
+    // skip already programmed word pairs
+    while (count >= 8 &&
+           getreg32(addr+0) == b[0] &&
+           getreg32(addr+4) == b[1]) {
+        count -= 8;
+        addr += 8;
+        b += 2;
+    }
+    if (count == 0) {
+        return true;
+    }
+
+
+#if STM32_FLASH_DISABLE_ISR
+    syssts_t sts = chSysGetStatusAndLockX();
+#endif
+    
+    stm32_flash_unlock();
+
+    stm32_flash_wait_idle();
+
+    // program in 16 bit steps
+    while (count >= 2) {
+        FLASH->CR = FLASH_CR_PG;
+
+        putreg32(b[0], addr+0);
+        putreg32(b[1], addr+4);
+
+        stm32_flash_wait_idle();
+
+        FLASH->SR |= FLASH_SR_EOP;
+        
+        FLASH->CR = 0;
+
+        if (getreg32(addr+0) != b[0] ||
+            getreg32(addr+4) != b[1]) {
+            _flash_fail_line = __LINE__;
+            _flash_fail_addr = addr;
+            _flash_fail_count = count;
+            _flash_fail_buf = (uint8_t *)b;
+            goto failed;
+        }
+
+        count -= 8;
+        b += 2;
+        addr += 8;
+    }
+
+    stm32_flash_lock();
+#if STM32_FLASH_DISABLE_ISR
+    chSysRestoreStatusX(sts);
+#endif
+    return true;
+
+failed:
+    stm32_flash_lock();
+#if STM32_FLASH_DISABLE_ISR
+    chSysRestoreStatusX(sts);
+#endif
+    return false;
+}
+#endif // STM32G4
+
 bool stm32_flash_write(uint32_t addr, const void *buf, uint32_t count)
 {
 #if defined(STM32F1) || defined(STM32F3)
@@ -637,6 +975,8 @@ bool stm32_flash_write(uint32_t addr, const void *buf, uint32_t count)
     return stm32_flash_write_f4f7(addr, buf, count);
 #elif defined(STM32H7)
     return stm32_flash_write_h7(addr, buf, count);
+#elif defined(STM32G4) || defined(STM32L4) || defined(STM32L4PLUS) 
+    return stm32_flash_write_g4(addr, buf, count);
 #else
 #error "Unsupported MCU"
 #endif
@@ -652,6 +992,186 @@ void stm32_flash_keep_unlocked(bool set)
         stm32_flash_lock();        
     }
 }
+
+/**
+ * @brief write protect the main flash or bootloader sectors
+ */
+void stm32_flash_protect_flash(bool bootloader, bool protect)
+{
+    (void)bootloader;
+    (void)protect;
+#if defined(STM32H7) && HAL_FLASH_PROTECTION
+    uint32_t prg1 = FLASH->WPSN_CUR1;
+#if STM32_FLASH_NBANKS > 1
+    uint32_t prg2 = FLASH->WPSN_CUR2;
+#endif
+#ifndef STORAGE_FLASH_PAGE
+    const uint32_t storage_page = 0xFF;
+#else
+    const uint32_t storage_page = STORAGE_FLASH_PAGE;
+#endif
+    const uint32_t reserve_page = (FLASH_LOAD_ADDRESS - 0x08000000) / (1024 * 128);
+
+    if (bootloader) { // only lock the reserved section
+        for (uint32_t i = 0; i < reserve_page; i++) {
+            if (protect) {
+                prg1 &= ~(1U<<i);
+            } else {
+                prg1 |= 1U<<i;
+            }
+        }
+    } else {
+        for (uint32_t i = reserve_page; i < 8; i++) {
+            if (i != storage_page && i != storage_page+1 && protect) {
+                prg1 &= ~(1U<<i);
+            } else {
+                prg1 |= 1U<<i;
+            }
+        }
+#if STM32_FLASH_NBANKS > 1
+        for (uint32_t i = 0; i < 8; i++) {
+            if (i+8 != storage_page && i+8 != storage_page+1 && protect) {
+                prg2 &= ~(1U<<i);
+            } else {
+                prg2 |= 1U<<i;
+            }
+        }
+#endif
+    }
+
+    // check if any changes to be made
+    if (prg1 == FLASH->WPSN_CUR1
+#if STM32_FLASH_NBANKS > 1
+        && prg2 == FLASH->WPSN_CUR2
+#endif
+        ) {
+        return;
+    }
+
+    stm32_flash_opt_clear_errors();
+    stm32_flash_clear_errors();
+
+    if (stm32_flash_unlock_options()) {
+        FLASH->WPSN_PRG1 = prg1;
+#if STM32_FLASH_NBANKS > 1
+        FLASH->WPSN_PRG2 = prg2;
+#endif
+        FLASH->OPTCR |= FLASH_OPTCR_OPTSTART;
+        stm32_flash_wait_opt_idle();
+
+        stm32_flash_lock_options();
+    }
+#endif
+}
+
+/*
+ * remove all protections from flash banks
+ * this is a destructive operation requiring bank erasure
+ * see H743 reference manual 4.3.10 - flash bank erase with protection removal
+ */
+void stm32_flash_unprotect_flash()
+{
+#if defined(STM32H7) && HAL_FLASH_PROTECTION
+    stm32_flash_opt_clear_errors();
+    stm32_flash_clear_errors();
+
+#if STM32_FLASH_NBANKS > 1
+    if ((FLASH->PRAR_CUR2 & 0xFFF) <= ((FLASH->PRAR_CUR2 >> 16) & 0xFFF)
+        || (FLASH->SCAR_CUR2 & 0xFFF) <= ((FLASH->SCAR_CUR2 >> 16) & 0xFFF)) {
+
+        if (stm32_flash_unlock_options()) {
+            const uint32_t start_addr = 0x00;
+            const uint32_t end_addr = 0xFF;
+            const uint32_t prg = (1 << 31) | ((start_addr << 16) | end_addr);
+
+            FLASH->PRAR_PRG2 = prg;
+            FLASH->SCAR_PRG2 = prg;
+            FLASH->WPSN_PRG2 = 0xFF;
+
+            stm32_flash_unlock();
+
+            FLASH->CR2 |= FLASH_CR_BER; // bank 2 erase
+            FLASH->CR2 |= FLASH_CR_START;
+
+            stm32_flash_wait_idle();
+
+            stm32_flash_lock();
+        }
+    }
+#endif
+    if ((FLASH->PRAR_CUR1 & 0xFFF) <= ((FLASH->PRAR_CUR1 >> 16) & 0xFFF)
+        || (FLASH->SCAR_CUR1 & 0xFFF) <= ((FLASH->SCAR_CUR1 >> 16) & 0xFFF)) {
+
+        if (stm32_flash_unlock_options()) {
+            const uint32_t start_addr = 0x00;
+            const uint32_t end_addr = 0xFF;
+            const uint32_t prg = (1 << 31) | ((start_addr << 16) | end_addr);
+
+            FLASH->PRAR_PRG1 = prg;
+            FLASH->SCAR_PRG1 = prg;
+            FLASH->WPSN_PRG1 = 0xFF;
+
+            stm32_flash_unlock();
+
+            FLASH->CR1 |= FLASH_CR_BER; // bank 1 erase
+            FLASH->CR1 |= FLASH_CR_START;
+
+            stm32_flash_wait_idle();
+
+            stm32_flash_lock();
+        }
+    }
+    // remove write protection from banks 1&2
+    if ((FLASH->WPSN_CUR1 & 0xFF) != 0xFF
+#if STM32_FLASH_NBANKS > 1
+        || (FLASH->WPSN_CUR2 & 0xFF) != 0xFF
+#endif
+        ) {
+        if (stm32_flash_unlock_options()) {
+            FLASH->WPSN_PRG1 = 0xFF;
+#if STM32_FLASH_NBANKS > 1
+            FLASH->WPSN_PRG2 = 0xFF;
+#endif
+            FLASH->OPTCR |= FLASH_OPTCR_OPTSTART;
+
+            stm32_flash_wait_opt_idle();
+            stm32_flash_lock_options();
+        }
+    }
+#endif
+}
+
+#if defined(HAL_FLASH_SET_NRST_MODE)
+/*
+  set NRST_MODE bits if not already set
+ */
+void stm32_flash_set_NRST_MODE(uint8_t nrst_mode)
+{
+    if ((FLASH->OPTR & FLASH_OPTR_NRST_MODE_Msk) == (((uint32_t)nrst_mode)<<FLASH_OPTR_NRST_MODE_Pos)) {
+        // already set correctly
+        return;
+    }
+    stm32_flash_unlock();
+    stm32_flash_opt_clear_errors();
+    if (stm32_flash_unlock_options()) {
+        FLASH->OPTR = (FLASH->OPTR & ~FLASH_OPTR_NRST_MODE_Msk) | (((uint32_t)nrst_mode)<<FLASH_OPTR_NRST_MODE_Pos);
+        FLASH->CR |= FLASH_CR_OPTSTRT;
+        stm32_flash_wait_opt_idle();
+        stm32_flash_lock_options();
+    }
+    stm32_flash_lock();
+}
+#endif // HAL_FLASH_SET_NRST_MODE
+
+#ifndef HAL_BOOTLOADER_BUILD
+/*
+  return true if we had a recent erase
+ */
+bool stm32_flash_recent_erase(void)
+{
+    return hrt_millis32() - last_erase_ms < 3000U;
+}
+#endif
 
 #endif // HAL_NO_FLASH_SUPPORT
 

@@ -21,6 +21,7 @@ from waflib import Logs
 
 import os
 import re
+import sys
 
 @conf
 def find_gxx(conf):
@@ -118,7 +119,7 @@ def _set_pkgconfig_crosscompilation_wrapper(cfg):
 
     @conf
     def new_validate_cfg(kw):
-        if not 'path' in kw:
+        if 'path' not in kw:
             if not cfg.env.PKGCONFIG:
                 cfg.find_program('%s-pkg-config' % cfg.env.TOOLCHAIN, var='PKGCONFIG')
             kw['path'] = cfg.env.PKGCONFIG
@@ -132,6 +133,8 @@ def configure(cfg):
     _filter_supported_cxx_compilers('g++', 'clang++')
 
     cfg.msg('Using toolchain', cfg.env.TOOLCHAIN)
+    if cfg.env.TOOLCHAIN == "custom":
+        return
 
     if cfg.env.TOOLCHAIN == 'native':
         cfg.load('compiler_cxx compiler_c')
@@ -142,8 +145,17 @@ def configure(cfg):
         return
 
     _set_pkgconfig_crosscompilation_wrapper(cfg)
-    cfg.find_program('%s-ar' % cfg.env.TOOLCHAIN, var='AR', quiet=True)
+    if sys.platform.startswith("cygwin"):
+        # on cygwin arm-none-eabi-ar doesn't support the @FILE syntax for splitting long lines
+        cfg.find_program('ar', var='AR', quiet=True)
+    else:
+        cfg.find_program('%s-ar' % cfg.env.TOOLCHAIN, var='AR', quiet=True)
     cfg.load('compiler_cxx compiler_c')
+
+    if sys.platform.startswith("cygwin"):
+        cfg.find_program('nm', var='NM')
+    else:
+        cfg.find_program('%s-nm' % cfg.env.TOOLCHAIN, var='NM')
 
     if not cfg.options.disable_gccdeps:
         cfg.load('gccdeps')

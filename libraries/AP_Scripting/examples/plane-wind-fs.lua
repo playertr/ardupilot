@@ -3,6 +3,9 @@
 --
 -- CAUTION: This script only works for Plane
 
+---@diagnostic disable: cast-local-type
+---@diagnostic disable: undefined-global
+
 -- store the batt info as { instance, filtered, capacity, margin_mah }
 -- instance: the battery monitor instance (zero indexed)
 -- filtered: internal variable for current draw
@@ -30,29 +33,25 @@ local SITL_wind = false
 
 
 -- Read in required params
-local value = param:get('TRIM_ARSPD_CM')
+local value = param:get('AIRSPEED_CRUISE')
 if value then
-  air_speed = value / 100
+  air_speed = value
 else
-  error('LUA: get TRIM_ARSPD_CM failed')
+  error('LUA: get AIRSPEED_CRUISE failed')
 end
-local value = param:get('ARSPD_FBW_MIN')
+value = param:get('AIRSPEED_MIN')
 if value then
   min_air_speed = value
 else
-  error('LUA: get ARSPD_FBW_MIN failed')
+  error('LUA: get AIRSPEED_MIN failed')
 end
-local value = param:get('MIN_GNDSPD_CM')
-if value then
-  min_ground_speed = value / 100
-else
-  error('LUA: get MIN_GNDSPD_CM failed')
+min_ground_speed = param:get('MIN_GROUNDSPEED')
+if not min_groundspeed then
+  error('LUA: get MIN_GROUNDSPEED failed')
 end
-local value = param:get('LIM_ROLL_CD')
-if value then
-  max_bank_angle = value / 100
-else
-  error('LUA: get LIM_ROLL_CD failed')
+max_bank_angle = param:get('ROLL_LIMIT_DEG')
+if not max_bank_angle then
+  error('LUA: get ROLL_LIMIT_DEG failed')
 end
 
 -- https://en.wikipedia.org/wiki/Standard_rate_turn#Radius_of_turn_formula
@@ -61,7 +60,7 @@ local turn_rad = (air_speed^2) / (9.81 * math.tan(math.rad(max_bank_angle)))
 
 -- Read the radius we expect to circle at when we get home
 local home_reached_rad
-local value = param:get('RTL_RADIUS')
+value = param:get('RTL_RADIUS')
 if value then
   value = math.abs(value)
   if value > 0 then
@@ -80,11 +79,10 @@ end
 
 -- internal global variables
 local return_start
-local return_distance
 local return_amps
 local trigger_instance = batt_info[1][1]
-local last_print = 0
-local timer_start_time = 0
+local last_print = uint32_t()
+local timer_start_time = uint32_t()
 local timer_active = true
 
 -- calculates the amount of time it will take for the vehicle to return home
@@ -93,7 +91,7 @@ local timer_active = true
 -- otherwise returns the time in seconds to get back
 local function time_to_home()
   local home = ahrs:get_home()
-  local position = ahrs:get_position()
+  local position = ahrs:get_location()
   local wind = ahrs:wind_estimate()
 
   if home and position and wind then
@@ -201,7 +199,7 @@ function track_return_time()
   end
 
   local home = ahrs:get_home()
-  local position = ahrs:get_position()
+  local position = ahrs:get_location()
   if home and position then
     local now = millis()
 
@@ -232,18 +230,19 @@ function track_return_time()
     end
 
     -- print updates tracking progress
+    local return_time = time_to_home()
+    local total_time = return_time + ((now-return_start)/1000)
     if last_print + (print_time * 1000) < now and print_time > 0 then
       last_print = now
-      local return_time = time_to_home()
       if (return_time < 0) then
         gcs:send_text(6, "Failsafe: ground speed low can not get home")
       elseif (return_time > 0) then
-        local total_time = return_time + ((now-return_start)/1000)
         -- cannot get string.format() to work with total time, wrong variable type? ie not %f or %i?
         gcs:send_text(0, "Failsafe: Estimated " .. tostring(total_time) .. string.format("s, %.0fs remain", return_time) )
       end
     end
 
+    logger:write('SFSC','total_return_time,remaining_return_time','If','ss','--',total_time,return_time)
   end
   return track_return_time, 100
 end
@@ -331,6 +330,8 @@ function update()
     return_q = 0.5 * density * return_airspeed^2 -- we could estimate the change in density also, but will be negligible
   end
 
+  logger:write('SFSA','return_time,return_airspeed,Q,return_Q','ffff','snPP','----',return_time,return_airspeed,q,return_q)
+
   for i = 1, #batt_info do
     local instance, norm_filtered_amps, rated_capacity_mah = table.unpack(batt_info[i])
     local amps = battery:current_amps(instance)
@@ -351,6 +352,7 @@ function update()
       local remaining_time = remaining_capacity / return_amps
 
       local buffer_time = remaining_time - ((return_time * time_SF) + margin)
+      logger:write('SFSB','Instance,current,rem_cap,rem_time,buffer','Bffff','#Aiss','--C--',i-1,return_amps,remaining_capacity,remaining_time,buffer_time)
       if  (return_time < 0) or buffer_time < 0 then
         if return_time < 0 then
           gcs:send_text(0, "Failsafe: ground speed low can not get home")
@@ -369,7 +371,7 @@ function update()
 
         -- Print the return distance
         --[[local home = ahrs:get_home()
-        local position = ahrs:get_position()
+        local position = ahrs:get_location()
         if home and position then
           return_distance = position:get_distance(home)
         end
@@ -408,7 +410,18 @@ for i = 1, #batt_info do
   -- subtract the capacity we want remaining when we get home
   local rated_cap = battery:pack_capacity_mah(instance)
   if rated_cap then
-    batt_info[i][3] = rated_cap - batt_info[i][4]
+    -- read in the critical MAH
+    local param_string = 'BATT' .. tostring(instance + 1) .. '_CRT_MAH'
+    if instance == 0 then
+      param_string = 'BATT_CRT_MAH'
+    end
+
+    value = param:get(param_string)
+    if  not value then
+      error('LUA: get '.. param_string .. ' failed')
+    end
+
+    batt_info[i][3] = rated_cap - (batt_info[i][4] + value)
   else
     error("Battery " .. instance .. " does not support current monitoring")
   end

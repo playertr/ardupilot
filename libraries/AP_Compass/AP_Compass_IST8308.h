@@ -16,12 +16,14 @@
  */
 #pragma once
 
+#include "AP_Compass_config.h"
+
+#if AP_COMPASS_IST8308_ENABLED
+
 #include <AP_Common/AP_Common.h>
 #include <AP_HAL/AP_HAL.h>
 #include <AP_HAL/I2CDevice.h>
-#include <AP_Math/AP_Math.h>
 
-#include "AP_Compass.h"
 #include "AP_Compass_Backend.h"
 
 #ifndef HAL_COMPASS_IST8308_I2C_ADDR
@@ -48,9 +50,10 @@ private:
     bool init();
 
     AP_HAL::OwnPtr<AP_HAL::Device> _dev;
-    AP_HAL::Util::perf_counter_t _perf_xfer_err;
 
     enum Rotation _rotation;
     uint8_t _instance;
     bool _force_external;
 };
+
+#endif  // AP_COMPASS_IST8308_ENABLED

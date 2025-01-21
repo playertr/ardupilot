@@ -16,6 +16,10 @@
  */
 #pragma once
 
+#include "AP_Notify_config.h"
+
+#if AP_NOTIFY_OREOLED_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 #include "NotifyDevice.h"
 
@@ -37,8 +41,10 @@ public:
     // called at 50Hz
     void update() override;
 
+#if AP_NOTIFY_MAVLINK_LED_CONTROL_SUPPORT_ENABLED
     // handle a LED_CONTROL message, by default device ignore message
     void handle_led_control(const mavlink_message_t &msg) override;
+#endif
 
 private:
     enum oreoled_pattern {
@@ -130,7 +136,7 @@ private:
         OREOLED_MODE_RGB_EXTENDED,
     };
 
-    // Oreo LED modes
+    // Oreo LED Themes
     enum Oreo_LED_Theme {
         OreoLED_Disabled        = 0,
         OreoLED_Aircraft        = 1,
@@ -164,7 +170,7 @@ private:
                      uint8_t new_blue, uint8_t new_amplitude_red, uint8_t new_amplitude_green, uint8_t new_amplitude_blue,
                      uint16_t new_period, uint16_t new_phase_offset);
 
-        bool operator==(const oreo_state &os);
+        bool operator==(const oreo_state &os) const;
     };
 
     typedef struct {
@@ -197,3 +203,4 @@ private:
     uint32_t _last_sync_ms;
 };
 
+#endif  // AP_NOTIFY_OREOLED_ENABLED

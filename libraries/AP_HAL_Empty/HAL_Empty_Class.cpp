@@ -9,9 +9,10 @@
 
 using namespace Empty;
 
-static UARTDriver uartADriver;
-static UARTDriver uartBDriver;
-static UARTDriver uartCDriver;
+static UARTDriver serial0Driver;
+static UARTDriver serial1Driver;
+static UARTDriver serial2Driver;
+static UARTDriver serial3Driver;
 static SPIDeviceManager spiDeviceManager;
 static AnalogIn analogIn;
 static Storage storageDriver;
@@ -25,18 +26,20 @@ static Flash flashDriver;
 
 HAL_Empty::HAL_Empty() :
     AP_HAL::HAL(
-        &uartADriver,
-        &uartBDriver,
-        &uartCDriver,
-        nullptr,            /* no uartD */
-        nullptr,            /* no uartE */
-        nullptr,            /* no uartF */
-        nullptr,            /* no uartG */
-        nullptr,            /* no uartH */
+        &serial0Driver,
+        &serial1Driver,
+        &serial2Driver,
+        &serial3Driver,
+        nullptr,            /* no SERIAL4 */
+        nullptr,            /* no SERIAL5 */
+        nullptr,            /* no SERIAL6 */
+        nullptr,            /* no SERIAL7 */
+        nullptr,            /* no SERIAL8 */
+        nullptr,            /* no SERIAL9 */
         &spiDeviceManager,
         &analogIn,
         &storageDriver,
-        &uartADriver,
+        &serial0Driver,
         &gpioDriver,
         &rcinDriver,
         &rcoutDriver,
@@ -49,26 +52,29 @@ HAL_Empty::HAL_Empty() :
 
 void HAL_Empty::run(int argc, char* const argv[], Callbacks* callbacks) const
 {
-    assert(callbacks);
-
     /* initialize all drivers and private members here.
      * up to the programmer to do this in the correct order.
      * Scheduler should likely come first. */
     scheduler->init();
-    uartA->begin(115200);
+    serial(0)->begin(115200);
     _member->init();
 
     callbacks->setup();
-    scheduler->system_initialized();
+    scheduler->set_system_initialized();
 
     for (;;) {
         callbacks->loop();
     }
 }
 
+static HAL_Empty hal_empty;
+
 const AP_HAL::HAL& AP_HAL::get_HAL() {
-    static const HAL_Empty hal;
-    return hal;
+    return hal_empty;
+}
+
+AP_HAL::HAL& AP_HAL::get_HAL_mutable() {
+    return hal_empty;
 }
 
 #endif

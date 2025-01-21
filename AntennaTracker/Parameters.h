@@ -1,5 +1,7 @@
 #pragma once
 
+#define AP_PARAM_VEHICLE_NAME tracker
+
 #include <AC_PID/AC_PID.h>
 #include <AP_Param/AP_Param.h>
 
@@ -42,8 +44,8 @@ public:
         k_param_format_version = 0,
         k_param_software_type,      // deprecated
 
-        k_param_gcs0 = 100,         // stream rates for uartA
-        k_param_gcs1,               // stream rates for uartC
+        k_param_gcs0 = 100,         // stream rates for SERIAL0
+        k_param_gcs1,               // stream rates for SERIAL1
         k_param_sysid_this_mav,
         k_param_sysid_my_gcs,
         k_param_serial0_baud,       // deprecated
@@ -58,7 +60,7 @@ public:
         k_param_sitl,
         k_param_pidPitch_old,   // deprecated
         k_param_pidYaw_old,     // deprecated
-        k_param_gcs2,               // stream rates for uartD
+        k_param_gcs2,               // stream rates for SERIAL2
         k_param_serial2_baud,       // deprecated
 
         k_param_yaw_slew_time,
@@ -86,18 +88,18 @@ public:
         k_param_gcs3,               // stream rates for fourth MAVLink port
         k_param_log_bitmask,        // 140
         k_param_notify,
-        k_param_BoardConfig_CAN,
+        k_param_can_mgr,
         k_param_battery,
 
-        //
-        // 150: Telemetry control
-        //
-        k_param_serial_manager,     // serial manager library
+        k_param_serial_manager_old = 144,     // serial manager library
         k_param_servo_yaw_type,
         k_param_alt_source,
         k_param_mavlink_update_rate,
         k_param_pitch_min,
         k_param_pitch_max,
+        k_param_gcs4,
+        k_param_gcs5,
+        k_param_gcs6,
 
         //
         // 200 : Radio settings
@@ -109,8 +111,8 @@ public:
         k_param_rc_channels,
         k_param_servo_channels,
 
-        k_param_stats = 218,
-        k_param_scripting = 219,
+        k_param_stats_old = 218,
+        k_param_scripting_old = 219,
 
         //
         // 220: Waypoint data
@@ -123,6 +125,12 @@ public:
         k_param_scan_speed_pitch,
         k_param_initial_mode,
         k_param_disarm_pwm,
+
+        k_param_auto_opts,
+        k_param_NavEKF2,
+        k_param_NavEKF3,
+
+        k_param_logger = 253, // 253 - Logging Group
 
         k_param_vehicle = 257, // vehicle common block of parameters
     };
@@ -162,6 +170,7 @@ public:
     AP_Int16 gcs_pid_mask;
     AP_Int8  initial_mode;
     AP_Int8 disarm_pwm;
+    AP_Int8 auto_opts;
 
     // Waypoints
     //

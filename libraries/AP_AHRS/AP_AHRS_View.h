@@ -22,6 +22,10 @@
 
 #include "AP_AHRS.h"
 
+// fwd declarations to avoid include errors
+class AC_AttitudeControl;
+class AC_PosControl;
+
 class AP_AHRS_View
 {
 public:
@@ -29,7 +33,7 @@ public:
     AP_AHRS_View(AP_AHRS &ahrs, enum Rotation rotation, float pitch_trim_deg=0);
 
     // update state
-    void update(bool skip_ins_update=false);
+    void update();
 
     // empty virtual destructor
     virtual ~AP_AHRS_View() {}
@@ -80,12 +84,12 @@ public:
       wrappers around ahrs functions which pass-thru directly. See
       AP_AHRS.h for description of each function
      */
-    bool get_position(struct Location &loc) const WARN_IF_UNUSED {
-        return ahrs.get_position(loc);
+    bool get_location(Location &loc) const WARN_IF_UNUSED {
+        return ahrs.get_location(loc);
     }
 
-    Vector3f wind_estimate(void) {
-        return ahrs.wind_estimate();
+    bool wind_estimate(Vector3f &wind) {
+        return ahrs.wind_estimate(wind);
     }
 
     bool airspeed_estimate(float &airspeed_ret) const WARN_IF_UNUSED {
@@ -106,10 +110,6 @@ public:
 
     bool get_velocity_NED(Vector3f &vec) const WARN_IF_UNUSED {
         return ahrs.get_velocity_NED(vec);
-    }
-
-    bool get_expected_mag_field_NED(Vector3f &ret) const WARN_IF_UNUSED {
-        return ahrs.get_expected_mag_field_NED(ret);
     }
 
     bool get_relative_position_NED_home(Vector3f &vec) const WARN_IF_UNUSED {
@@ -140,8 +140,8 @@ public:
         return ahrs.groundspeed();
     }
 
-    const Vector3f &get_accel_ef_blended(void) const {
-        return ahrs.get_accel_ef_blended();
+    const Vector3f &get_accel_ef(void) const {
+        return ahrs.get_accel_ef();
     }
 
     uint32_t getLastPosNorthEastReset(Vector2f &pos) WARN_IF_UNUSED {
@@ -154,11 +154,11 @@ public:
 
     // rotate a 2D vector from earth frame to body frame
     // in result, x is forward, y is right
-    Vector2f rotate_earth_to_body2D(const Vector2f &ef_vector) const;
+    Vector2f earth_to_body2D(const Vector2f &ef_vector) const;
 
     // rotate a 2D vector from earth frame to body frame
     // in input, x is forward, y is right
-    Vector2f rotate_body_to_earth2D(const Vector2f &bf) const;
+    Vector2f body_to_earth2D(const Vector2f &bf) const;
 
     // return the average size of the roll/pitch error estimate
     // since last call
@@ -172,12 +172,28 @@ public:
         return ahrs.get_error_yaw();
     }
 
+    // Logging Functions
+    void Write_AttitudeView(const Vector3f &targets) const;    
+
     float roll;
     float pitch;
     float yaw;
     int32_t roll_sensor;
     int32_t pitch_sensor;
     int32_t yaw_sensor;
+
+
+    // get current rotation
+    // note that this may not be the rotation were actually using, see _pitch_trim_deg
+    enum Rotation get_rotation(void) const {
+        return rotation;
+    }
+
+    // get pitch trim (deg)
+    float get_pitch_trim() const { return _pitch_trim_deg; }
+
+    // Rotate vector from AHRS reference frame to AHRS view refences frame
+    void rotate(Vector3f &vec) const;
 
 private:
     const enum Rotation rotation;

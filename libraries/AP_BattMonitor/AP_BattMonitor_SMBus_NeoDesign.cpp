@@ -1,6 +1,11 @@
+#include "AP_BattMonitor_config.h"
+
+#if AP_BATTERY_SMBUS_NEODESIGN_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Common/AP_Common.h>
 #include "AP_BattMonitor.h"
+
 #include "AP_BattMonitor_SMBus_NeoDesign.h"
 
 #define BATTMONITOR_ND_CELL_COUNT                0x5C    // cell-count register
@@ -9,9 +14,8 @@
 // Constructor
 AP_BattMonitor_SMBus_NeoDesign::AP_BattMonitor_SMBus_NeoDesign(AP_BattMonitor &mon,
                                                    AP_BattMonitor::BattMonitor_State &mon_state,
-                                                   AP_BattMonitor_Params &params,
-                                                   AP_HAL::OwnPtr<AP_HAL::I2CDevice> dev)
-    : AP_BattMonitor_SMBus(mon, mon_state, params, std::move(dev))
+                                                   AP_BattMonitor_Params &params)
+    : AP_BattMonitor_SMBus(mon, mon_state, params, AP_BATTMONITOR_SMBUS_BUS_INTERNAL)
 {
     _pec_supported = true;
 }
@@ -19,14 +23,16 @@ AP_BattMonitor_SMBus_NeoDesign::AP_BattMonitor_SMBus_NeoDesign(AP_BattMonitor &m
 void AP_BattMonitor_SMBus_NeoDesign::timer()
 {
     uint16_t data;
-    uint32_t tnow = AP_HAL::micros();
-
     // Get the cell count once, it's not likely to change in flight
     if (_cell_count == 0) {
-        if (read_word(BATTMONITOR_ND_CELL_COUNT, data)) {
-            _cell_count = data;
-        } else {
+        if (!read_word(BATTMONITOR_ND_CELL_COUNT, data)) {
             return; // something wrong, don't try anything else
+        }
+        // constrain maximum cellcount in case of i2c corruption
+        if (data > max_cell_count) {
+            _cell_count = max_cell_count;
+        } else {
+            _cell_count = data;
         }
     }
 
@@ -39,6 +45,8 @@ void AP_BattMonitor_SMBus_NeoDesign::timer()
             read_all_cells = false;
         }
     }
+
+    const uint32_t tnow = AP_HAL::micros();
 
     if (read_all_cells && (_cell_count > 0)) {
         uint32_t summed = 0;
@@ -73,3 +81,4 @@ void AP_BattMonitor_SMBus_NeoDesign::timer()
     read_temp();
 }
 
+#endif  // AP_BATTERY_SMBUS_NEODESIGN_ENABLED

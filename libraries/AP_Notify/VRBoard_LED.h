@@ -20,14 +20,20 @@
 
 #pragma once
 
+#include "AP_Notify_config.h"
+
+#if AP_NOTIFY_VRBOARD_LED_ENABLED
+
 #include "RGBLed.h"
 #include "AP_BoardLED.h"
 
 class VRBoard_LED: public RGBLed {
 public:
 	VRBoard_LED();
+  bool init(void) override;
 
 protected:
-    bool hw_init(void) override;
     bool hw_set_rgb(uint8_t r, uint8_t g, uint8_t b) override;
 };
+
+#endif  // AP_NOTIFY_VRBOARD_LED_ENABLED

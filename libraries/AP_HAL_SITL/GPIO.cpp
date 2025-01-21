@@ -1,6 +1,8 @@
 
 #include "GPIO.h"
 
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+
 using namespace HALSITL;
 
 extern const AP_HAL::HAL& hal;
@@ -11,11 +13,23 @@ void GPIO::init()
 {}
 
 void GPIO::pinMode(uint8_t pin, uint8_t output)
-{}
+{
+    if (pin > 7) {
+        return;
+    }
+    if (output) {
+        pin_mode_is_write |= (1U<<pin);
+    } else {
+        pin_mode_is_write &= ~(1U<<pin);
+    }
+}
 
 uint8_t GPIO::read(uint8_t pin)
 {
     if (!_sitlState->_sitl) {
+        return 0;
+    }
+    if (!valid_pin(pin)) {
         return 0;
     }
     
@@ -32,6 +46,16 @@ void GPIO::write(uint8_t pin, uint8_t value)
 {
     if (!_sitlState->_sitl) {
         return;
+    }
+
+    if (!valid_pin(pin)) {
+        return;
+    }
+    if (pin < 8) {
+        if (!(pin_mode_is_write & (1U<<pin))) {
+            // ignore setting of pull-up resistors
+            return;
+        }
     }
     uint16_t mask = static_cast<uint16_t>(_sitlState->_sitl->pin_mask.get());
     uint16_t new_mask = mask;
@@ -58,7 +82,7 @@ void GPIO::toggle(uint8_t pin)
 /* Alternative interface: */
 AP_HAL::DigitalSource* GPIO::channel(uint16_t n) {
     if (n < 16) {  // (ie. sizeof(pin_mask)*8)
-        return new DigitalSource(static_cast<uint8_t>(n));
+        return NEW_NOTHROW DigitalSource(static_cast<uint8_t>(n));
     } else {
         return nullptr;
     }
@@ -92,3 +116,4 @@ void DigitalSource::toggle()
 {
     return hal.gpio->write(_pin, !hal.gpio->read(_pin));
 }
+#endif

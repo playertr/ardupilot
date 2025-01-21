@@ -12,68 +12,64 @@
  * You should have received a copy of the GNU General Public License along
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Author: Oliver Walters
+ * Author: Oliver Walters / Currawong Engineering Pty Ltd
  */
 
 #pragma once
 
 #include <AP_HAL/AP_HAL.h>
-#include <AP_HAL/CAN.h>
-#include <AP_HAL/Semaphores.h>
+#include <AP_CANManager/AP_CANDriver.h>
 
-#include "piccolo_protocol/ESCPackets.h"
+#include <AP_Param/AP_Param.h>
+#include <AP_ESC_Telem/AP_ESC_Telem_Backend.h>
 
-// maximum number of ESC allowed on CAN bus simultaneously
-#define PICCOLO_CAN_MAX_NUM_ESC 12
-#define PICCOLO_CAN_MAX_GROUP_ESC (PICCOLO_CAN_MAX_NUM_ESC / 4)
-
-#ifndef HAL_PICCOLO_CAN_ENABLE
-#define HAL_PICCOLO_CAN_ENABLE (HAL_WITH_UAVCAN && !HAL_MINIMIZE_FEATURES)
-#endif
+#include "AP_PiccoloCAN_Device.h"
+#include "AP_PiccoloCAN_ESC.h"
+#include "AP_PiccoloCAN_ECU.h"
+#include "AP_PiccoloCAN_Servo.h"
+#include <AP_EFI/AP_EFI_Currawong_ECU.h>
 
 #if HAL_PICCOLO_CAN_ENABLE
 
-class AP_PiccoloCAN : public AP_HAL::CANProtocol
+#define PICCOLO_MSG_RATE_HZ_MIN 1
+#define PICCOLO_MSG_RATE_HZ_MAX 500
+#define PICCOLO_MSG_RATE_HZ_DEFAULT 50
+
+class AP_PiccoloCAN : public AP_CANDriver, public AP_ESC_Telem_Backend
 {
 public:
     AP_PiccoloCAN();
     ~AP_PiccoloCAN();
 
-    // Piccolo message groups form part of the CAN ID of each frame
-    enum class MessageGroup : uint8_t {
-        SIMULATOR = 0x00,       // Simulator messages
-        SENSOR = 0x04,          // External sensors
-        ACTUATOR = 0x07,        // Actuators (e.g. ESC / servo)
-        ECU_OUT = 0x08,         // Messages *from* an ECU
-        ECU_IN = 0x09,          // Message *to* an ECU
-
-        SYSTEM = 0x19,          // System messages (e.g. bootloader)
-    };
-
-    // Piccolo actuator types differentiate between actuator frames
-    enum class ActuatorType : uint8_t {
-        SERVO = 0x00,
-        ESC = 0x20,
-    };
-
     /* Do not allow copies */
-    AP_PiccoloCAN(const AP_PiccoloCAN &other) = delete;
-    AP_PiccoloCAN &operator=(const AP_PiccoloCAN&) = delete;
+    CLASS_NO_COPY(AP_PiccoloCAN);
+
+    static const struct AP_Param::GroupInfo var_info[];
 
     // Return PiccoloCAN from @driver_index or nullptr if it's not ready or doesn't exist
     static AP_PiccoloCAN *get_pcan(uint8_t driver_index);
 
     // initialize PiccoloCAN bus
     void init(uint8_t driver_index, bool enable_filters) override;
+    bool add_interface(AP_HAL::CANIface* can_iface) override;
 
     // called from SRV_Channels
     void update();
 
-    // send ESC telemetry messages over MAVLink
-    void send_esc_telemetry_mavlink(uint8_t mav_chan);
+    // return true if a particular servo is 'active' on the Piccolo interface
+    bool is_servo_channel_active(uint8_t chan);
 
-    // return true if a particular ESC has been detected
-    bool is_esc_present(uint8_t chan, uint64_t timeout_ms = 2000);
+    // return true if a particular ESC is 'active' on the Piccolo interface
+    bool is_esc_channel_active(uint8_t chan);
+
+    // return true if a particular servo has been detected on the CAN interface
+    bool is_servo_present(uint8_t chan, uint32_t timeout_us = 2000000);
+
+    // return true if a particular ESC has been detected on the CAN interface
+    bool is_esc_present(uint8_t chan, uint32_t timeout_us = 2000000);
+
+    // return true if a particular servo is enabled
+    bool is_servo_enabled(uint8_t chan);
 
     // return true if a particular ESC is enabled
     bool is_esc_enabled(uint8_t chan);
@@ -87,43 +83,53 @@ private:
     void loop();
 
     // write frame on CAN bus, returns true on success
-    bool write_frame(uavcan::CanFrame &out_frame, uavcan::MonotonicTime timeout);
+    bool write_frame(AP_HAL::CANFrame &out_frame, uint32_t timeout_us);
 
     // read frame on CAN bus, returns true on succses
-    bool read_frame(uavcan::CanFrame &recv_frame, uavcan::MonotonicTime timeout);
+    bool read_frame(AP_HAL::CANFrame &recv_frame, uint32_t timeout_us);
 
     // send ESC commands over CAN
     void send_esc_messages(void);
 
     // interpret an ESC message received over CAN
-    bool handle_esc_message(uavcan::CanFrame &frame);
+    bool handle_esc_message(AP_HAL::CANFrame &frame);
+
+    // send servo commands over CAN
+    void send_servo_messages(void);
+
+    // interpret a servo message received over CAN
+    bool handle_servo_message(AP_HAL::CANFrame &frame);
+
+#if AP_EFI_CURRAWONG_ECU_ENABLED
+    void send_ecu_messages(void);
+
+    // interpret an ECU message received over CAN
+    bool handle_ecu_message(AP_HAL::CANFrame &frame);
+#endif
 
     bool _initialized;
     char _thread_name[16];
     uint8_t _driver_index;
-    uavcan::ICanDriver* _can_driver;
-    const uavcan::CanFrame* _select_frames[uavcan::MaxCanIfaces] { };
+    AP_HAL::CANIface* _can_iface;
+    HAL_BinarySemaphore sem_handle;
 
-    HAL_Semaphore _telem_sem;
+    AP_PiccoloCAN_Servo _servos[PICCOLO_CAN_MAX_NUM_SERVO];
+    AP_PiccoloCAN_ESC _escs[PICCOLO_CAN_MAX_NUM_ESC];
 
-    struct PiccoloESC_Info_t {
+    struct CurrawongECU_Info_t {
+        float command;
+        bool newCommand;
+    } _ecu_info;
 
-        // ESC telemetry information
-        ESC_StatusA_t statusA;          //! Telemetry data
-        ESC_StatusB_t statusB;          //! Telemetry data
-        ESC_Firmware_t firmware;        //! Firmware / checksum information
-        ESC_Address_t address;          //! Serial number
-        ESC_EEPROMSettings_t eeprom;    //! Non-volatile settings info
+    // Piccolo CAN parameters
+    AP_Int32 _esc_bm;       //!< ESC selection bitmask
+    AP_Int16 _esc_hz;       //!< ESC update rate (Hz)
 
-        // Output information
+    AP_Int32 _srv_bm;       //!< Servo selection bitmask
+    AP_Int16 _srv_hz;       //!< Servo update rate (Hz)
 
-        int16_t command;    //! Raw command to send to each ESC
-        bool newCommand;    //! Is the command "new"?
-        bool newTelemetry;  //! Is there new telemetry data available?
-
-        uint64_t last_rx_msg_timestamp = 0;    //! Time of most recently received message
-
-    } _esc_info[PICCOLO_CAN_MAX_NUM_ESC];
+    AP_Int16 _ecu_id;       //!< ECU Node ID
+    AP_Int16 _ecu_hz;       //!< ECU update rate (Hz)
 
 };
 

@@ -1,6 +1,9 @@
 #pragma once
 
-#include "AP_Proximity.h"
+#include "AP_Proximity_config.h"
+
+#if AP_PROXIMITY_TERARANGERTOWER_ENABLED
+
 #include "AP_Proximity_Backend_Serial.h"
 
 #define PROXIMITY_TRTOWER_TIMEOUT_MS            300                               // requests timeout after 0.3 seconds
@@ -23,7 +26,7 @@ private:
 
     // check and process replies from sensor
     bool read_sensor_data();
-    void update_sector_data(int16_t angle_deg, uint16_t distance_cm);
+    void update_sector_data(int16_t angle_deg, uint16_t distance_mm);
 
     // reply related variables
     uint8_t buffer[20]; // buffer where to store data from serial
@@ -32,3 +35,5 @@ private:
     // request related variables
     uint32_t _last_distance_received_ms;    // system time of last distance measurement received from sensor
 };
+
+#endif // AP_PROXIMITY_TERARANGERTOWER_ENABLED

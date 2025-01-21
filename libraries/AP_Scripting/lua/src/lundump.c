@@ -6,6 +6,9 @@
 
 #if defined(ARDUPILOT_BUILD)
 #pragma GCC diagnostic ignored "-Wfloat-equal"
+#if (defined(__GNUC__) &&  __GNUC__ >= 7 && __GNUC__ < 9) || (defined(__clang_major__) && __clang_major__ >= 11)
+#pragma GCC diagnostic ignored "-Wstring-plus-int"
+#endif
 #endif
 
 #define lundump_c
@@ -238,7 +241,7 @@ static void fchecksize (LoadState *S, size_t size, const char *tname) {
 #define checksize(S,t)	fchecksize(S,sizeof(t),#t)
 
 static void checkHeader (LoadState *S) {
-  checkliteral(S, LUA_SIGNATURE + 1, "not a");  /* 1st char already checked */
+  checkliteral(S, &LUA_SIGNATURE[1], "not a");  /* 1st char already checked */
   if (LoadByte(S) != LUAC_VERSION)
     error(S, "version mismatch in");
   if (LoadByte(S) != LUAC_FORMAT)

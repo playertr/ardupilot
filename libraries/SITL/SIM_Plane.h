@@ -36,12 +36,11 @@ public:
 
     /* static object creator */
     static Aircraft *create(const char *frame_str) {
-        return new Plane(frame_str);
+        return NEW_NOTHROW Plane(frame_str);
     }
 
 protected:
     const float hover_throttle = 0.7f;
-    const float air_density = 1.225; // kg/m^3 at sea level, ISA conditions
     float angle_of_attack;
     float beta;
 
@@ -96,10 +95,14 @@ protected:
     bool elevons;
     bool vtail;
     bool dspoilers;
+    bool redundant;
     bool reverse_elevator_rudder;
     bool ice_engine;
     bool tailsitter;
+    bool aerobatic;
+    bool copter_tailsitter;
     bool have_launcher;
+    bool have_steering;
     float launch_accel;
     float launch_time;
     uint64_t launch_start_ms;
@@ -114,14 +117,15 @@ protected:
         choke_servo,
         ignition_servo,
         starter_servo,
-        slewrate
+        slewrate,
+        true
     };
 
     float liftCoeff(float alpha) const;
     float dragCoeff(float alpha) const;
     Vector3f getForce(float inputAileron, float inputElevator, float inputRudder) const;
     Vector3f getTorque(float inputAileron, float inputElevator, float inputRudder, float inputThrust, const Vector3f &force) const;
-    void calculate_forces(const struct sitl_input &input, Vector3f &rot_accel, Vector3f &body_accel);
+    void calculate_forces(const struct sitl_input &input, Vector3f &rot_accel);
 };
 
 } // namespace SITL

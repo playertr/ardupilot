@@ -7,10 +7,9 @@ nice fgfs \
     --fdm=external \
     --aircraft=arducopter \
     --fg-aircraft="$AUTOTESTDIR/aircraft" \
-    --airport=YKRY \
+    --airport=KSFO \
     --geometry=650x550 \
     --bpp=32 \
-    --disable-anti-alias-hud \
     --disable-hud-3d \
     --disable-horizon-effect \
     --timeofday=noon \

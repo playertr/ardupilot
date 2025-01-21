@@ -21,18 +21,14 @@
  */
 #pragma once
 
-#include <AP_HAL/AP_HAL.h>
-#include <AP_Vehicle/AP_Vehicle_Type.h>
+#include "AP_Camera_config.h"
 
-#ifndef HAL_RUNCAM_ENABLED
-#define HAL_RUNCAM_ENABLED !HAL_MINIMIZE_FEATURES && !APM_BUILD_TYPE(APM_BUILD_Replay)
-#endif
+#include "AP_Camera_Backend.h"
 
-#if HAL_RUNCAM_ENABLED
+#if AP_CAMERA_RUNCAM_ENABLED
 
 #include <AP_Param/AP_Param.h>
 #include <RC_Channel/RC_Channel.h>
-#include <AP_RCMapper/AP_RCMapper.h>
 #include <AP_Arming/AP_Arming.h>
 #include <AP_OSD/AP_OSD.h>
 
@@ -44,24 +40,26 @@
 
 /// @class	AP_RunCam
 /// @brief	Object managing a RunCam device
-class AP_RunCam
+class AP_RunCam : public AP_Camera_Backend
 {
 public:
-    AP_RunCam();
+    AP_RunCam(AP_Camera &frontend, AP_Camera_Params &params, uint8_t instance, uint8_t runcam_instance);
 
     // do not allow copies
-    AP_RunCam(const AP_RunCam &other) = delete;
-    AP_RunCam &operator=(const AP_RunCam &) = delete;
+    CLASS_NO_COPY(AP_RunCam);
 
     // get singleton instance
     static AP_RunCam *get_singleton() {
         return _singleton;
     }
 
-    enum class DeviceType {
+    enum class DeviceModel {
         Disabled = 0,
         SplitMicro = 1, // video support only
-        Split = 2 // camera and video support
+        Split = 2, // camera and video support
+        Split4k = 3, // video support only + 5key OSD
+        Hybrid = 4, // video support + QR mode switch
+		Run24k = 5, // camera and video support like Split but recording command like Split4k
     };
 
     // operation of camera button simulation
@@ -83,22 +81,49 @@ public:
         VIDEO_RECORDING_AT_BOOT = (1 << 4)
     };
 
+
+    // return true if healthy
+    bool healthy() const override;
+
+    // momentary switch to change camera between picture and video modes
+    void cam_mode_toggle() override;
+
+    // entry point to actually take a picture.  returns true on success
+    bool trigger_pic() override;
+
+    // send camera information message to GCS
+    void send_camera_information(mavlink_channel_t chan) const override;
+
+    // send camera settings message to GCS
+    void send_camera_settings(mavlink_channel_t chan) const override;
+
     // initialize the RunCam driver
-    void init();
+    void init() override;
     // camera button simulation
     bool simulate_camera_button(const ControlOperation operation, const uint32_t transition_timeout = RUNCAM_DEFAULT_BUTTON_PRESS_DELAY);
     // start the video
     void start_recording();
     // stop the video
     void stop_recording();
+    // start or stop video recording.  returns true on success
+    // set start_recording = true to start record, false to stop recording
+    bool record_video(bool _start_recording) override {
+        if (_start_recording) {
+            start_recording();
+        } else {
+            stop_recording();
+        }
+        return true;
+    }
+
     // enter the OSD menu
     void enter_osd();
     // exit the OSD menu
     void exit_osd();
     // OSD control determined by camera options
     void osd_option();
-    // update loop
-    void update();
+    // update - should be called at 50hz
+    void update() override;
     // Check whether arming is allowed
     bool pre_arm_check(char *failure_msg, const uint8_t failure_msg_len) const;
 
@@ -107,7 +132,7 @@ public:
 private:
     // definitions prefixed with RCDEVICE taken from https://support.runcam.com/hc/en-us/articles/360014537794-RunCam-Device-Protocol
     // possible supported features
-    // RunCam Split 3S micro reports 0x77 (POWER, WIFI, MODE, SETTING, DPORT, START)
+    // RunCam 2 4k and Split 3S micro reports 0x77 (POWER, WIFI, MODE, SETTING, DPORT, START)
     // RunCam Split 2S reports 0x57 (POWER, WIFI, MODE, SETTING, START)
     // RunCam Racer 3 reports 0x08 (OSD)
     enum class Feature {
@@ -121,6 +146,11 @@ private:
         RCDEVICE_PROTOCOL_FEATURE_STOP_RECORDING = (1 << 7),
         FEATURES_OVERRIDE = (1 << 14)
     };
+
+    const uint16_t RCDEVICE_PROTOCOL_FEATURE_2_KEY_OSD =
+        uint16_t(Feature::RCDEVICE_PROTOCOL_FEATURE_CHANGE_MODE)
+        | uint16_t(Feature::RCDEVICE_PROTOCOL_FEATURE_SIMULATE_WIFI_BUTTON)
+        | uint16_t(Feature::RCDEVICE_PROTOCOL_FEATURE_SIMULATE_POWER_BUTTON);
 
     // camera control commands
     enum class Command {
@@ -211,7 +241,7 @@ private:
     static const uint8_t  RUNCAM_NUM_EXPECTED_RESPONSES = 4;
     static const uint8_t  RUNCAM_MAX_MENUS =              1;
     static const uint8_t  RUNCAM_MAX_MENU_LENGTH =        6;
-    static const uint8_t  RUNCAM_MAX_DEVICE_TYPES =       2;
+    static const uint8_t  RUNCAM_MAX_DEVICE_TYPES =       5;
 
     // supported features, usually probed from the device
     AP_Int16 _features;
@@ -264,6 +294,10 @@ private:
     static uint8_t _sub_menu_lengths[RUNCAM_NUM_SUB_MENUS];
     // shared inbound scratch space
     uint8_t _recv_buf[RUNCAM_MAX_PACKET_SIZE]; // all the response contexts use same recv buffer
+    // the runcam instance
+    uint8_t _runcam_instance;
+
+    static const char* _models[RUNCAM_MAX_DEVICE_TYPES];
 
     class Request;
 
@@ -351,8 +385,6 @@ private:
 
     // OSD update loop
     void update_osd();
-    // return radio values as LOW, MIDDLE, HIGH
-    RC_Channel::aux_switch_pos_t get_channel_pos(uint8_t rcmapchan) const;
     // update the state machine when armed or flying
     void update_state_machine_armed();
     // update the state machine when disarmed
@@ -377,10 +409,15 @@ private:
     void handle_5_key_simulation_process(Event ev);
     // handle a response
     void handle_5_key_simulation_response(const Request& request);
+    // commands to start and stop recording
+    ControlOperation start_recording_command() const;
+    ControlOperation stop_recording_command() const;
     // process a response from the serial port
     void receive();
     // empty the receive side of the serial port
     void drain();
+    // start the uart with appropriate settings
+    void start_uart();
 
     // get the RunCam device information
     void get_device_info();
@@ -401,15 +438,21 @@ private:
         uint16_t maxRetryTimes, parse_func_t parseFunc);
     // send a packet to the serial port
     void send_packet(Command command, uint8_t param);
-    // crc functions
-    static uint8_t crc8_high_first(uint8_t *ptr, uint8_t len);
-    static uint8_t crc8_dvb_s2(uint8_t crc, uint8_t a);
     // handle a device info response
     void parse_device_info(const Request& request);
     // wait for the RunCam device to be fully ready
     bool camera_ready() const;
     // whether or not the requested feature is supported
     bool has_feature(const Feature feature) const { return _features.get() & uint16_t(feature); }
+    // input mode
+    bool has_2_key_OSD() const {
+        return (_features.get() & RCDEVICE_PROTOCOL_FEATURE_2_KEY_OSD) == RCDEVICE_PROTOCOL_FEATURE_2_KEY_OSD;
+    }
+    bool has_5_key_OSD() const {
+        // RunCam Hybrid lies about supporting both 5-key and 2-key
+        return !has_2_key_OSD() && has_feature(Feature::RCDEVICE_PROTOCOL_FEATURE_SIMULATE_5_KEY_OSD_CABLE);
+    }
+
     // whether or not we can arm
     bool is_arming_prevented() const { return _in_menu > _menu_enter_level; }
     // error handler for OSD simulation
@@ -425,4 +468,4 @@ namespace AP
 AP_RunCam *runcam();
 };
 
-#endif  // HAL_RUNCAM_ENABLED
+#endif  // AP_CAMERA_RUNCAM_ENABLED

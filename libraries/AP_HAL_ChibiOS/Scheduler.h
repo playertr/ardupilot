@@ -25,8 +25,11 @@
 #define APM_MONITOR_PRIORITY    183
 #define APM_MAIN_PRIORITY       180
 #define APM_TIMER_PRIORITY      181
-#define APM_RCIN_PRIORITY       177
+#define APM_RCOUT_PRIORITY      181
+#define APM_LED_PRIORITY         60
 #define APM_UART_PRIORITY        60
+#define APM_NET_PRIORITY         60
+#define APM_UART_UNBUFFERED_PRIORITY 181
 #define APM_STORAGE_PRIORITY     59
 #define APM_IO_PRIORITY          58
 #define APM_STARTUP_PRIORITY     10
@@ -37,6 +40,10 @@
  */
 #ifndef APM_MAIN_PRIORITY_BOOST
 #define APM_MAIN_PRIORITY_BOOST 182
+#endif
+
+#ifndef APM_RCIN_PRIORITY
+#define APM_RCIN_PRIORITY      177
 #endif
 
 #ifndef APM_SPI_PRIORITY
@@ -54,11 +61,15 @@
 #endif
 
 #ifndef TIMER_THD_WA_SIZE
-#define TIMER_THD_WA_SIZE   2048
+#define TIMER_THD_WA_SIZE   1536
+#endif
+
+#ifndef RCOUT_THD_WA_SIZE
+#define RCOUT_THD_WA_SIZE    512
 #endif
 
 #ifndef RCIN_THD_WA_SIZE
-#define RCIN_THD_WA_SIZE    512
+#define RCIN_THD_WA_SIZE    1024
 #endif
 
 #ifndef IO_THD_WA_SIZE
@@ -66,11 +77,11 @@
 #endif
 
 #ifndef STORAGE_THD_WA_SIZE
-#define STORAGE_THD_WA_SIZE 2048
+#define STORAGE_THD_WA_SIZE 1024
 #endif
 
 #ifndef MONITOR_THD_WA_SIZE
-#define MONITOR_THD_WA_SIZE 512
+#define MONITOR_THD_WA_SIZE 1024
 #endif
 
 /* Scheduler implementation: */
@@ -92,7 +103,8 @@ public:
 
     bool     in_main_thread() const override { return get_main_thread() == chThdGetSelfX(); }
 
-    void     system_initialized() override;
+    void     set_system_initialized() override;
+    bool     is_system_initialized() override { return _initialized; };
     void     hal_initialized() { _hal_initialized = true; }
 
     bool     check_called_boost(void);
@@ -103,7 +115,6 @@ public:
       be used to prevent watchdog reset during expected long delays
       A value of zero cancels the previous expected delay
      */
-    void     _expect_delay_ms(uint32_t ms);
     void     expect_delay_ms(uint32_t ms) override;
 
     /*
@@ -141,7 +152,6 @@ private:
     uint32_t expect_delay_start;
     uint32_t expect_delay_length;
     uint32_t expect_delay_nesting;
-    HAL_Semaphore expect_delay_sem;
 
     AP_HAL::MemberProc _timer_proc[CHIBIOS_SCHEDULER_MAX_TIMER_PROCS];
     uint8_t _num_timer_procs;
@@ -153,6 +163,7 @@ private:
     uint32_t last_watchdog_pat_ms;
 
     thread_t* _timer_thread_ctx;
+    thread_t* _rcout_thread_ctx;
     thread_t* _rcin_thread_ctx;
     thread_t* _io_thread_ctx;
     thread_t* _storage_thread_ctx;
@@ -162,7 +173,12 @@ private:
     binary_semaphore_t _timer_semaphore;
     binary_semaphore_t _io_semaphore;
 #endif
+
+    // calculates an integer to be used as the priority for a newly-created thread
+    uint8_t calculate_thread_priority(priority_base base, int8_t priority) const;
+
     static void _timer_thread(void *arg);
+    static void _rcout_thread(void *arg);
     static void _rcin_thread(void *arg);
     static void _io_thread(void *arg);
     static void _storage_thread(void *arg);
@@ -172,5 +188,20 @@ private:
     void _run_timers();
     void _run_io(void);
     static void thread_create_trampoline(void *ctx);
+
+#if defined STM32H7
+    void check_low_memory_is_zero();
+#endif
+
+    // check for free stack space
+    void check_stack_free(void);
+
+#if defined(HAL_GPIO_PIN_EXT_WDOG)
+    // external watchdog GPIO support
+    void ext_watchdog_pat(uint32_t now_ms);
+    uint32_t last_ext_watchdog_ms;
+#endif
+
+    static void try_force_mutex(void);
 };
 #endif

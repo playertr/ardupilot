@@ -1,17 +1,22 @@
 #include <AP_HAL/AP_HAL.h>
 
 #include "AP_HAL_SITL.h"
+#include <AP_HAL_SITL/I2CDevice.h>
 #include "Scheduler.h"
 #include "UARTDriver.h"
 #include <sys/time.h>
 #include <fenv.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
-#if defined (__clang__)
+#if defined (__clang__) || (defined (__APPLE__) && defined (__MACH__)) || defined (__OpenBSD__)
 #include <stdlib.h>
 #else
 #include <malloc.h>
 #endif
 #include <AP_RCProtocol/AP_RCProtocol.h>
+#ifdef UBSAN_ENABLED
+#include <fcntl.h>
+#include <sanitizer/asan_interface.h>
+#endif
 
 using namespace HALSITL;
 
@@ -34,7 +39,6 @@ bool Scheduler::_in_timer_proc = false;
 AP_HAL::MemberProc Scheduler::_io_proc[SITL_SCHEDULER_MAX_TIMER_PROCS] = {nullptr};
 uint8_t Scheduler::_num_io_procs = 0;
 bool Scheduler::_in_io_proc = false;
-bool Scheduler::_should_reboot = false;
 bool Scheduler::_should_exit = false;
 
 bool Scheduler::_in_semaphore_take_wait = false;
@@ -47,6 +51,46 @@ Scheduler::Scheduler(SITL_State *sitlState) :
     _stopped_clock_usec(0)
 {
 }
+
+#ifdef UBSAN_ENABLED
+/*
+  catch ubsan errors and append to a log file
+ */
+extern "C" {
+void __ubsan_get_current_report_data(const char **OutIssueKind,
+                                     const char **OutMessage,
+                                     const char **OutFilename, unsigned *OutLine,
+                                     unsigned *OutCol, char **OutMemoryAddr);
+
+void __ubsan_on_report();
+void __ubsan_on_report()
+{
+    static int fd = -1;
+    if (fd == -1) {
+        const char *ubsan_log_path = getenv("UBSAN_LOG_PATH");
+        if (ubsan_log_path == nullptr) {
+            ubsan_log_path = "ubsan.log";
+        }
+        if (ubsan_log_path != nullptr) {
+            fd = open(ubsan_log_path, O_APPEND|O_CREAT|O_WRONLY, 0644);
+        }
+    }
+    if (fd != -1) {
+        const char *OutIssueKind = nullptr;
+        const char *OutMessage = nullptr;
+        const char *OutFilename = nullptr;
+        unsigned OutLine=0;
+        unsigned OutCol=0;
+        char *OutMemoryAddr=nullptr;
+        __ubsan_get_current_report_data(&OutIssueKind, &OutMessage, &OutFilename,
+                                        &OutLine, &OutCol, &OutMemoryAddr);
+        dprintf(fd, "ubsan error: %s:%u:%u %s:%s\n",
+                OutFilename, OutLine, OutCol,
+                OutIssueKind, OutMessage);
+    }
+}
+}
+#endif
 
 void Scheduler::init()
 {
@@ -72,7 +116,7 @@ bool Scheduler::in_main_thread() const
  * time (due to the logic in SITL_State::wait_clock) and thus taking
  * the semaphore never times out - meaning we essentially deadlock.
  */
-bool Scheduler::semaphore_wait_hack_required()
+bool Scheduler::semaphore_wait_hack_required() const
 {
     if (pthread_self() != _main_ctx) {
         // only the main thread ever moves stuff forwards
@@ -84,6 +128,11 @@ bool Scheduler::semaphore_wait_hack_required()
 
 void Scheduler::delay_microseconds(uint16_t usec)
 {
+    if (_sitlState->_sitl == nullptr) {
+        // this allows examples to run
+        hal.scheduler->stop_clock(AP_HAL::micros64()+usec);
+        return;
+    }
     uint64_t start = AP_HAL::micros64();
     do {
         uint64_t dtime = AP_HAL::micros64() - start;
@@ -142,7 +191,7 @@ void Scheduler::register_timer_failsafe(AP_HAL::Proc failsafe, uint32_t period_u
     _failsafe = failsafe;
 }
 
-void Scheduler::system_initialized() {
+void Scheduler::set_system_initialized() {
     if (_initialized) {
         AP_HAL::panic(
             "PANIC: scheduler system initialized called more than once");
@@ -152,17 +201,21 @@ void Scheduler::system_initialized() {
     // i386 with gcc doesn't work with FE_INVALID
     exceptions |= FE_INVALID;
 #endif
+#if !defined(HAL_BUILD_AP_PERIPH)
     if (_sitlState->_sitl == nullptr || _sitlState->_sitl->float_exception) {
         feenableexcept(exceptions);
     } else {
         feclearexcept(exceptions);
     }
+#else
+    feclearexcept(exceptions);
+#endif
     _initialized = true;
 }
 
 void Scheduler::sitl_end_atomic() {
     if (_nested_atomic_ctr == 0) {
-        hal.uartA->printf("NESTED ATOMIC ERROR\n");
+        hal.serial(0)->printf("NESTED ATOMIC ERROR\n");
     } else {
         _nested_atomic_ctr--;
     }
@@ -170,13 +223,8 @@ void Scheduler::sitl_end_atomic() {
 
 void Scheduler::reboot(bool hold_in_bootloader)
 {
-    if (AP_BoardConfig::in_config_error()) {
-        // the _should_reboot flag set below is not checked by the
-        // sensor-config-error loop, so force the reboot here:
-        HAL_SITL::actually_reboot();
-        abort();
-    }
-    _should_reboot = true;
+    HAL_SITL::actually_reboot();
+    abort();
 }
 
 void Scheduler::_run_timer_procs()
@@ -230,21 +278,21 @@ void Scheduler::_run_io_procs()
 
     _in_io_proc = false;
 
-    hal.uartA->_timer_tick();
-    hal.uartB->_timer_tick();
-    hal.uartC->_timer_tick();
-    hal.uartD->_timer_tick();
-    hal.uartE->_timer_tick();
-    hal.uartF->_timer_tick();
-    hal.uartG->_timer_tick();
-    hal.uartH->_timer_tick();
+    for (uint8_t i=0; i<hal.num_serial; i++) {
+        hal.serial(i)->_timer_tick();
+    }
     hal.storage->_timer_tick();
+
+    // in lieu of a thread-per-bus:
+    ((HALSITL::I2CDeviceManager*)(hal.i2c_mgr))->_timer_tick();
 
 #if SITL_STACK_CHECKING_ENABLED
     check_thread_stacks();
 #endif
 
+#if AP_RCPROTOCOL_ENABLED
     AP::RC().update();
+#endif
 }
 
 /*
@@ -253,7 +301,7 @@ void Scheduler::_run_io_procs()
 void Scheduler::stop_clock(uint64_t time_usec)
 {
     _stopped_clock_usec = time_usec;
-    if (time_usec - _last_io_run > 10000) {
+    if (_sitlState->_sitl != nullptr && time_usec - _last_io_run > 10000) {
         _last_io_run = time_usec;
         _run_io_procs();
     }
@@ -265,6 +313,7 @@ void Scheduler::stop_clock(uint64_t time_usec)
 void *Scheduler::thread_create_trampoline(void *ctx)
 {
     struct thread_attr *a = (struct thread_attr *)ctx;
+    a->thread = pthread_self();
     a->f[0]();
     
     WITH_SEMAPHORE(_thread_sem);
@@ -302,7 +351,7 @@ bool Scheduler::thread_create(AP_HAL::MemberProc proc, const char *name, uint32_
     pthread_t thread {};
     const uint32_t alloc_stack = MAX(size_t(PTHREAD_STACK_MIN),stack_size);
 
-    struct thread_attr *a = new struct thread_attr;
+    struct thread_attr *a = NEW_NOTHROW struct thread_attr;
     if (!a) {
         return false;
     }
@@ -335,6 +384,11 @@ bool Scheduler::thread_create(AP_HAL::MemberProc proc, const char *name, uint32_
     if (pthread_create(&thread, &a->attr, thread_create_trampoline, a) != 0) {
         goto failed;
     }
+
+#if !defined(__APPLE__) && !defined(__OpenBSD__)
+    pthread_setname_np(thread, name);
+#endif
+
     a->next = threads;
     threads = a;
     return true;
@@ -360,8 +414,20 @@ void Scheduler::check_thread_stacks(void)
         const uint8_t ncheck = 8;
         for (uint8_t i=0; i<ncheck; i++) {
             if (p->stack_min[i] != stackfill) {
-                AP_HAL::panic("stack overflow in thread %s\n", p->name);
+                AP_HAL::panic("stack overflow in thread %s", p->name);
             }
         }
     }
+}
+
+// get the name of the current thread, or nullptr if not known
+const char *Scheduler::get_current_thread_name(void) const
+{
+    const pthread_t self = pthread_self();
+    for (struct thread_attr *a=threads; a; a=a->next) {
+        if (a->thread == self) {
+            return a->name;
+        }
+    }
+    return nullptr;
 }

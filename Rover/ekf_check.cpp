@@ -53,7 +53,7 @@ void Rover::ekf_check()
                 ekf_check_state.fail_count = EKF_CHECK_ITERATIONS_MAX;
                 ekf_check_state.bad_variance = true;
 
-                AP::logger().Write_Error(LogErrorSubsystem::EKFCHECK,
+                LOGGER_WRITE_ERROR(LogErrorSubsystem::EKFCHECK,
                                          LogErrorCode::EKFCHECK_BAD_VARIANCE);
                 // send message to gcs
                 if ((AP_HAL::millis() - ekf_check_state.last_warn_time) > EKF_CHECK_WARNING_TIME) {
@@ -71,7 +71,7 @@ void Rover::ekf_check()
             // if variance is flagged as bad and the counter reaches zero then clear flag
             if (ekf_check_state.bad_variance && ekf_check_state.fail_count == 0) {
                 ekf_check_state.bad_variance = false;
-                AP::logger().Write_Error(LogErrorSubsystem::EKFCHECK,
+                LOGGER_WRITE_ERROR(LogErrorSubsystem::EKFCHECK,
                                          LogErrorCode::EKFCHECK_VARIANCE_CLEARED);
                 // clear failsafe
                 failsafe_ekf_off_event();
@@ -94,8 +94,7 @@ bool Rover::ekf_over_threshold()
     // use EKF to get variance
     float position_variance, vel_variance, height_variance, tas_variance;
     Vector3f mag_variance;
-    Vector2f offset;
-    ahrs.get_variances(vel_variance, position_variance, height_variance, mag_variance, tas_variance, offset);
+    ahrs.get_variances(vel_variance, position_variance, height_variance, mag_variance, tas_variance);
 
     // return true if two of compass, velocity and position variances are over the threshold
     uint8_t over_thresh_count = 0;
@@ -109,15 +108,21 @@ bool Rover::ekf_over_threshold()
         over_thresh_count++;
     }
 
+    bool optflow_healthy = false;
+#if AP_OPTICALFLOW_ENABLED
+    optflow_healthy = optflow.healthy();
+#endif
+    if (!optflow_healthy && (vel_variance >= (2.0f * g.fs_ekf_thresh))) {
+        over_thresh_count += 2;
+    } else if (vel_variance >= g.fs_ekf_thresh) {
+        over_thresh_count++;
+    }
+    
     if (over_thresh_count >= 2) {
         return true;
     }
 
-    if (ekf_position_ok()) {
-        return false;
-    }
-
-    return true;
+    return !ekf_position_ok();
 }
 
 // ekf_position_ok - returns true if the ekf claims it's horizontal absolute position estimate is ok and home position is set
@@ -151,9 +156,8 @@ void Rover::failsafe_ekf_event()
 
     // EKF failsafe event has occurred
     failsafe.ekf = true;
-    AP::logger().Write_Error(LogErrorSubsystem::FAILSAFE_EKFINAV,
+    LOGGER_WRITE_ERROR(LogErrorSubsystem::FAILSAFE_EKFINAV,
                              LogErrorCode::FAILSAFE_OCCURRED);
-    gcs().send_text(MAV_SEVERITY_CRITICAL,"EKF failsafe!");
 
     // does this mode require position?
     if (!control_mode->requires_position()) {
@@ -164,12 +168,16 @@ void Rover::failsafe_ekf_event()
     switch ((enum fs_ekf_action)g.fs_ekf_action.get()) {
         case FS_EKF_DISABLE:
             // do nothing
+            return;
+        case FS_EKF_REPORT_ONLY:
             break;
-        case FS_EFK_HOLD:
+        case FS_EKF_HOLD:
         default:
             set_mode(mode_hold, ModeReason::EKF_FAILSAFE);
             break;
     }
+
+    gcs().send_text(MAV_SEVERITY_CRITICAL,"EKF failsafe");
 }
 
 // failsafe_ekf_off_event - actions to take when EKF failsafe is cleared
@@ -181,7 +189,7 @@ void Rover::failsafe_ekf_off_event(void)
     }
 
     failsafe.ekf = false;
-    AP::logger().Write_Error(LogErrorSubsystem::FAILSAFE_EKFINAV,
+    LOGGER_WRITE_ERROR(LogErrorSubsystem::FAILSAFE_EKFINAV,
                              LogErrorCode::FAILSAFE_RESOLVED);
     gcs().send_text(MAV_SEVERITY_CRITICAL,"EKF failsafe cleared");
 }
