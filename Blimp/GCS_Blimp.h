@@ -1,7 +1,7 @@
 #pragma once
 
 #include <GCS_MAVLink/GCS.h>
-#include "GCS_Mavlink.h"
+#include "GCS_MAVLink_Blimp.h"
 
 class GCS_Blimp : public GCS
 {
@@ -25,9 +25,9 @@ public:
 
     bool vehicle_initialised() const override;
 
-protected:
-
     uint8_t sysid_this_mav() const override;
+
+protected:
 
     // minimum amount of time (in microseconds) that must remain in
     // the main scheduler loop before we are allowed to send any
@@ -41,7 +41,7 @@ protected:
     GCS_MAVLINK_Blimp *new_gcs_mavlink_backend(GCS_MAVLINK_Parameters &params,
             AP_HAL::UARTDriver &uart) override
     {
-        return new GCS_MAVLINK_Blimp(params, uart);
+        return NEW_NOTHROW GCS_MAVLINK_Blimp(params, uart);
     }
 
 };

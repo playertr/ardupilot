@@ -14,19 +14,7 @@
  */
 #pragma once
 
-#include "AP_RangeFinder.h"
-#include "AP_RangeFinder_Backend.h"
-
-#include <AP_HAL/AP_HAL.h>
-#include <utility>
-
-#ifndef AP_RANGEFINDER_BEBOP_ENABLED
-#define AP_RANGEFINDER_BEBOP_ENABLED \
-    AP_RANGEFINDER_BACKEND_DEFAULT_ENABLED &&                           \
-    (CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BEBOP ||       \
-     CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_DISCO) &&      \
-    defined(HAVE_LIBIIO)
-#endif
+#include "AP_RangeFinder_config.h"
 
 #if AP_RANGEFINDER_BEBOP_ENABLED
 
@@ -153,9 +141,9 @@ private:
     unsigned int _filtered_capture_size;
     struct echo _echoes[RNFD_BEBOP_MAX_ECHOES];
     unsigned int _filter_average = 4;
-    int16_t _last_max_distance_cm = 850;
-    int16_t _last_min_distance_cm = 32;
+    float _last_max_distance = 8.50;
+    float _last_min_distance = 0.32;
 };
 
 
-#endif
+#endif  // AP_RANGEFINDER_BEBOP_ENABLED

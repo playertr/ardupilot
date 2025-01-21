@@ -41,7 +41,7 @@ bool AP_AHRS_SIM::wind_estimate(Vector3f &wind) const
     return true;
 }
 
-bool AP_AHRS_SIM::airspeed_estimate(float &airspeed_ret) const
+bool AP_AHRS_SIM::airspeed_EAS(float &airspeed_ret) const
 {
     if (_sitl == nullptr) {
         return false;
@@ -52,9 +52,9 @@ bool AP_AHRS_SIM::airspeed_estimate(float &airspeed_ret) const
     return true;
 }
 
-bool AP_AHRS_SIM::airspeed_estimate(uint8_t index, float &airspeed_ret) const
+bool AP_AHRS_SIM::airspeed_EAS(uint8_t index, float &airspeed_ret) const
 {
-    return airspeed_estimate(airspeed_ret);
+    return airspeed_EAS(airspeed_ret);
 }
 
 bool AP_AHRS_SIM::get_quaternion(Quaternion &quat) const
@@ -80,7 +80,7 @@ Vector2f AP_AHRS_SIM::groundspeed_vector(void)
     return Vector2f(fdm.speedN, fdm.speedE);
 }
 
-bool AP_AHRS_SIM::get_vert_pos_rate(float &velocity) const
+bool AP_AHRS_SIM::get_vert_pos_rate_D(float &velocity) const
 {
     if (_sitl == nullptr) {
         return false;
@@ -152,15 +152,15 @@ bool AP_AHRS_SIM::get_relative_position_D_origin(float &posD) const
 bool AP_AHRS_SIM::get_filter_status(nav_filter_status &status) const
 {
     memset(&status, 0, sizeof(status));
-    status.flags.attitude = 1;
-    status.flags.horiz_vel = 1;
-    status.flags.vert_vel = 1;
-    status.flags.horiz_pos_rel = 1;
-    status.flags.horiz_pos_abs = 1;
-    status.flags.vert_pos = 1;
-    status.flags.pred_horiz_pos_rel = 1;
-    status.flags.pred_horiz_pos_abs = 1;
-    status.flags.using_gps = 1;
+    status.flags.attitude = true;
+    status.flags.horiz_vel = true;
+    status.flags.vert_vel = true;
+    status.flags.horiz_pos_rel = true;
+    status.flags.horiz_pos_abs = true;
+    status.flags.vert_pos = true;
+    status.flags.pred_horiz_pos_rel = true;
+    status.flags.pred_horiz_pos_abs = true;
+    status.flags.using_gps = true;
 
     return true;
 }
@@ -172,15 +172,9 @@ void AP_AHRS_SIM::get_control_limits(float &ekfGndSpdLimit, float &ekfNavVelGain
     ekfNavVelGainScaler = 1.0f;
 }
 
-bool AP_AHRS_SIM::get_mag_offsets(uint8_t mag_idx, Vector3f &magOffsets) const
-{
-    magOffsets.zero();
-
-    return true;
-}
-
 void AP_AHRS_SIM::send_ekf_status_report(GCS_MAVLINK &link) const
 {
+#if HAL_GCS_ENABLED
     // send status report with everything looking good
     const uint16_t flags =
         EKF_ATTITUDE | /* Set if EKF's attitude estimate is good. | */
@@ -194,6 +188,7 @@ void AP_AHRS_SIM::send_ekf_status_report(GCS_MAVLINK &link) const
         EKF_PRED_POS_HORIZ_REL | /* Set if EKF's predicted horizontal position (relative) estimate is good. | */
         EKF_PRED_POS_HORIZ_ABS; /* Set if EKF's predicted horizontal position (absolute) estimate is good. | */
     mavlink_msg_ekf_status_report_send(link.get_chan(), flags, 0, 0, 0, 0, 0, 0);
+#endif // HAL_GCS_ENABLED
 }
 
 bool AP_AHRS_SIM::get_origin(Location &ret) const
@@ -252,6 +247,8 @@ void AP_AHRS_SIM::get_results(AP_AHRS_Backend::Estimates &results)
 
     const Vector3f &accel = _ins.get_accel();
     results.accel_ef = results.dcm_matrix * AP::ahrs().get_rotation_autopilot_body_to_vehicle_body() * accel;
+
+    results.location_valid = get_location(results.location);
 
 #if HAL_NAVEKF3_AVAILABLE
     if (_sitl->odom_enable) {

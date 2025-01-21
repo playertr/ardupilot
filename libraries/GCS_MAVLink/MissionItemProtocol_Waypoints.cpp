@@ -16,6 +16,11 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "GCS_config.h"
+#include <AP_Mission/AP_Mission_config.h>
+
+#if HAL_GCS_ENABLED && AP_MISSION_ENABLED
+
 #include "MissionItemProtocol_Waypoints.h"
 
 #include <AP_Logger/AP_Logger.h>
@@ -53,7 +58,9 @@ bool MissionItemProtocol_Waypoints::clear_all_items()
 MAV_MISSION_RESULT MissionItemProtocol_Waypoints::complete(const GCS_MAVLINK &_link)
 {
     _link.send_text(MAV_SEVERITY_INFO, "Flight plan received");
+#if HAL_LOGGING_ENABLED
     AP::logger().Write_EntireMission();
+#endif
     return MAV_MISSION_ACCEPTED;
 }
 
@@ -86,16 +93,12 @@ MAV_MISSION_RESULT MissionItemProtocol_Waypoints::get_item(const GCS_MAVLINK &_l
     if (!AP_Mission::mission_cmd_to_mavlink_int(cmd, ret_packet)) {
         return MAV_MISSION_ERROR;
     }
+    ret_packet.mission_type = MAV_MISSION_TYPE_MISSION;
 
     // set packet's current field to 1 if this is the command being executed
     if (cmd.id == (uint16_t)mission.get_current_nav_cmd().index) {
         ret_packet.current = 1;
-    } else {
-        ret_packet.current = 0;
     }
-
-    // set auto continue to 1
-    ret_packet.autocontinue = 1;     // 1 (true), 0 (false)
 
     return MAV_MISSION_ACCEPTED;
 }
@@ -139,3 +142,5 @@ void MissionItemProtocol_Waypoints::truncate(const mavlink_mission_count_t &pack
     // new mission arriving, truncate mission to be the same length
     mission.truncate(packet.count);
 }
+
+#endif  // HAL_GCS_ENABLED && AP_MISSION_ENABLED

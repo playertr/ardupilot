@@ -20,6 +20,8 @@
 #include "location.h"
 #include "control.h"
 
+static const float NaNf = nanf("0x4152");
+
 #if HAL_WITH_EKF_DOUBLE
 typedef Vector2<double> Vector2F;
 typedef Vector3<double> Vector3F;
@@ -171,8 +173,8 @@ T constrain_value(const T amt, const T low, const T high);
 template <typename T>
 T constrain_value_line(const T amt, const T low, const T high, uint32_t line);
 
-#define constrain_float(amt, low, high) constrain_value_line(float(amt), float(low), float(high), uint32_t(__LINE__))
-#define constrain_ftype(amt, low, high) constrain_value_line(ftype(amt), ftype(low), ftype(high), uint32_t(__LINE__))
+#define constrain_float(amt, low, high) constrain_value_line(float(amt), float(low), float(high), uint32_t(__AP_LINE__))
+#define constrain_ftype(amt, low, high) constrain_value_line(ftype(amt), ftype(low), ftype(high), uint32_t(__AP_LINE__))
 
 inline int16_t constrain_int16(const int16_t amt, const int16_t low, const int16_t high)
 {
@@ -298,13 +300,18 @@ inline constexpr uint32_t usec_to_hz(uint32_t usec)
 
 /*
   linear interpolation based on a variable in a range
-  return value will be in the range [var_low,var_high]
+  return value will be in the range [output_low,output_high]
 
-  Either polarity is supported, so var_low can be higher than var_high
+  Either polarity is supported, so input_low can be higher than input_high
+
+  Read this as, "Take the value 'input_value' as a value between
+  'input_low' and 'input_high'.  Return a value between 'output_low'
+  and 'output_high' proportonal to the position of 'input_value'
+  between 'input_low' and 'input_high'"
  */
-float linear_interpolate(float low_output, float high_output,
-                         float var_value,
-                         float var_low, float var_high);
+float linear_interpolate(float output_low, float output_high,
+                         float input_value,
+                         float input_low, float input_high);
 
 /* cubic "expo" curve generator 
  * alpha range: [0,1] min to max expo
@@ -366,7 +373,7 @@ float fixedwing_turn_rate(float bank_angle_deg, float airspeed);
 float degF_to_Kelvin(float temp_f);
 
 /*
-  conversion functions to prevent undefined behaviour
+  constraining conversion functions to prevent undefined behaviour
  */
 int16_t float_to_int16(const float v);
 uint16_t float_to_uint16(const float v);
@@ -375,3 +382,17 @@ uint32_t float_to_uint32(const float v);
 uint32_t double_to_uint32(const double v);
 int32_t double_to_int32(const double v);
 
+/*
+  Convert from float to int32_t without breaking Wstrict-aliasing due to type punning
+*/
+int32_t float_to_int32_le(const float& value) WARN_IF_UNUSED;
+
+/*
+  Convert from uint32_t to float without breaking Wstrict-aliasing due to type punning
+*/
+float int32_to_float_le(const uint32_t& value) WARN_IF_UNUSED;
+
+/*
+  Convert from uint64_t to double without breaking Wstrict-aliasing due to type punning
+*/
+double uint64_to_double_le(const uint64_t& value) WARN_IF_UNUSED;

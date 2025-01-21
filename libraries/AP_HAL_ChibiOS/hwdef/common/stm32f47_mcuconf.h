@@ -158,7 +158,11 @@
 #define STM32_PLLI2SQ_VALUE                 4
 #define STM32_PLLI2SR_VALUE                 2
 #define STM32_PLLI2SSRC                     STM32_PLLI2SSRC_PLLSRC
+#if defined(STM32F413_MCUCONF)
+#define STM32_CK48MSEL                      STM32_CK48MSEL_PLLI2S
+#else
 #define STM32_CK48MSEL                      STM32_CK48MSEL_PLLSAI
+#endif
 
 #elif HAL_EXPECTED_SYSCLOCK == 168000000
 // medium frequency variants of F4, such as F405, F427
@@ -466,6 +470,7 @@
 #define STM32_SDC_READ_TIMEOUT_MS           1000
 #define STM32_SDC_CLOCK_ACTIVATION_DELAY    10
 #define STM32_SDC_SDIO_UNALIGNED_SUPPORT    TRUE
+#define STM32_SDC_SDIO_PWRSAV               TRUE
 
 /*
  * SERIAL driver system settings.
@@ -538,6 +543,8 @@
 #define STM32_IRQ_UART6_PRIORITY            12
 #define STM32_IRQ_UART7_PRIORITY            12
 #define STM32_IRQ_UART8_PRIORITY            12
+#define STM32_IRQ_UART9_PRIORITY            12
+#define STM32_IRQ_UART10_PRIORITY           12
 #define STM32_IRQ_USART1_PRIORITY           12
 #define STM32_IRQ_USART2_PRIORITY           12
 #define STM32_IRQ_USART3_PRIORITY           12
@@ -546,6 +553,8 @@
 #define STM32_IRQ_USART6_PRIORITY           12
 #define STM32_IRQ_USART7_PRIORITY           12
 #define STM32_IRQ_USART8_PRIORITY           12
+#define STM32_IRQ_USART9_PRIORITY           12
+#define STM32_IRQ_USART10_PRIORITY          12
 
 /*
  * USB driver system settings.
@@ -579,3 +588,10 @@
 
 // limit ISR count per byte
 #define STM32_I2C_ISR_LIMIT                 6
+
+#if defined(STM32F7xx_MCUCONF)
+// disable DMA on I2C by default on F7
+#ifndef STM32_I2C_USE_DMA
+#define STM32_I2C_USE_DMA FALSE
+#endif
+#endif

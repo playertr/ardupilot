@@ -1,3 +1,7 @@
+#include "AP_BattMonitor_config.h"
+
+#if AP_BATTERY_SMBUS_ENABLED
+
 #include "AP_BattMonitor_SMBus.h"
 
 #define AP_BATTMONITOR_SMBUS_PEC_POLYNOME 0x07 // Polynome for CRC generation
@@ -5,8 +9,6 @@
 extern const AP_HAL::HAL& hal;
 
 const AP_Param::GroupInfo AP_BattMonitor_SMBus::var_info[] = {
-
-    // Param indexes must be between 10 and 19 to avoid conflict with other battery monitor param tables loaded by pointer
 
     // @Param: I2C_BUS
     // @DisplayName: Battery monitor I2C bus number
@@ -24,7 +26,7 @@ const AP_Param::GroupInfo AP_BattMonitor_SMBus::var_info[] = {
     // @RebootRequired: True
     AP_GROUPINFO("I2C_ADDR", 11, AP_BattMonitor_SMBus, _address, AP_BATTMONITOR_SMBUS_I2C_ADDR),
 
-    // Param indexes must be between 10 and 19 to avoid conflict with other battery monitor param tables loaded by pointer
+    // CHECK/UPDATE INDEX TABLE IN AP_BattMonitor_Backend.cpp WHEN CHANGING OR ADDING PARAMETERS
 
     AP_GROUPEND
 };
@@ -250,3 +252,5 @@ uint8_t AP_BattMonitor_SMBus::get_PEC(const uint8_t i2c_addr, uint8_t cmd, bool 
     // return result
     return crc;
 }
+
+#endif  // AP_BATTERY_SMBUS_ENABLED

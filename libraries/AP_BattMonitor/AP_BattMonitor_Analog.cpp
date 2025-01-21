@@ -1,6 +1,12 @@
+#include "AP_BattMonitor_config.h"
+
+#if AP_BATTERY_ANALOG_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Common/AP_Common.h>
 #include <AP_Math/AP_Math.h>
+#include <AP_BoardConfig/AP_BoardConfig.h>
+
 #include "AP_BattMonitor_Analog.h"
 
 extern const AP_HAL::HAL& hal;
@@ -50,7 +56,7 @@ const AP_Param::GroupInfo AP_BattMonitor_Analog::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("VLT_OFFSET", 6, AP_BattMonitor_Analog, _volt_offset, 0),
     
-    // Param indexes must be less than 10 to avoid conflict with other battery monitor param tables loaded by pointer
+    // CHECK/UPDATE INDEX TABLE IN AP_BattMonitor_Backend.cpp WHEN CHANGING OR ADDING PARAMETERS
 
     AP_GROUPEND
 };
@@ -62,10 +68,36 @@ AP_BattMonitor_Analog::AP_BattMonitor_Analog(AP_BattMonitor &mon,
     AP_BattMonitor_Backend(mon, mon_state, params)
 {
     AP_Param::setup_object_defaults(this, var_info);
+
+    // no other good way of setting these defaults
+#if AP_BATT_MONITOR_MAX_INSTANCES > 1
+    if (mon_state.instance == 1) {
+#ifdef HAL_BATT2_VOLT_PIN
+        _volt_pin.set_default(HAL_BATT2_VOLT_PIN);
+#endif
+#ifdef HAL_BATT2_CURR_PIN
+        _curr_pin.set_default(HAL_BATT2_CURR_PIN);
+#endif
+#ifdef HAL_BATT2_VOLT_SCALE
+        _volt_multiplier.set_default(HAL_BATT2_VOLT_SCALE);
+#endif
+#ifdef HAL_BATT2_CURR_SCALE
+        _curr_amp_per_volt.set_default(HAL_BATT2_CURR_SCALE);
+#endif
+    }
+#endif
     _state.var_info = var_info;
     
     _volt_pin_analog_source = hal.analogin->channel(_volt_pin);
-    _curr_pin_analog_source = hal.analogin->channel(_curr_pin);
+    if (_volt_pin_analog_source == nullptr) {
+        AP_BoardConfig::config_error("No analog channels for battery %d", mon_state.instance);
+    }
+    if ((AP_BattMonitor::Type)_params._type.get() == AP_BattMonitor::Type::ANALOG_VOLTAGE_AND_CURRENT) {
+        _curr_pin_analog_source = hal.analogin->channel(_curr_pin);
+        if (_curr_pin_analog_source == nullptr) {
+            AP_BoardConfig::config_error("No analog channels for battery %d", mon_state.instance);
+        }
+    }
 
 }
 
@@ -101,5 +133,8 @@ AP_BattMonitor_Analog::read()
 /// return true if battery provides current info
 bool AP_BattMonitor_Analog::has_current() const
 {
-    return ((AP_BattMonitor::Type)_params._type.get() == AP_BattMonitor::Type::ANALOG_VOLTAGE_AND_CURRENT);
+    return (_curr_pin_analog_source != nullptr) &&
+           ((AP_BattMonitor::Type)_params._type.get() == AP_BattMonitor::Type::ANALOG_VOLTAGE_AND_CURRENT);
 }
+
+#endif  // AP_BATTERY_ANALOG_ENABLED

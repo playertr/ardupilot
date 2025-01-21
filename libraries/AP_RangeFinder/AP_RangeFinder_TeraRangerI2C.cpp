@@ -53,7 +53,7 @@ AP_RangeFinder_Backend *AP_RangeFinder_TeraRangerI2C::detect(RangeFinder::RangeF
         return nullptr;
     }
 
-    AP_RangeFinder_TeraRangerI2C *sensor = new AP_RangeFinder_TeraRangerI2C(_state, _params, std::move(i2c_dev));
+    AP_RangeFinder_TeraRangerI2C *sensor = NEW_NOTHROW AP_RangeFinder_TeraRangerI2C(_state, _params, std::move(i2c_dev));
     if (!sensor) {
         return nullptr;
     }
@@ -139,14 +139,14 @@ bool AP_RangeFinder_TeraRangerI2C::process_raw_measure(uint16_t raw_distance, ui
     // Check for error codes
     if (raw_distance == 0xFFFF) {
         // Too far away
-        output_distance_cm = max_distance_cm() + TR_OUT_OF_RANGE_ADD_CM;
+        output_distance_cm = max_distance()*100 + TR_OUT_OF_RANGE_ADD_CM;
     } else if (raw_distance == 0x0000) {
         // Too close
         output_distance_cm = 0;
     } else if (raw_distance == 0x0001) {
         // Unable to measure
         // This can also include the sensor pointing to the horizon when used as a proximity sensor
-        output_distance_cm = max_distance_cm() + TR_OUT_OF_RANGE_ADD_CM;
+        output_distance_cm = max_distance()*100 + TR_OUT_OF_RANGE_ADD_CM;
     } else {
         output_distance_cm = raw_distance/10; // Conversion to centimeters
     }

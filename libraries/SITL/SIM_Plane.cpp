@@ -17,11 +17,10 @@
   just enough to be able to debug control logic for new frame types
 */
 
-#define ALLOW_DOUBLE_MATH_FUNCTIONS
-
 #include "SIM_Plane.h"
 
 #include <stdio.h>
+#include <AP_Filesystem/AP_Filesystem_config.h>
 
 using namespace SITL;
 
@@ -57,6 +56,8 @@ Plane::Plane(const char *frame_str) :
         vtail = true;
     } else if (strstr(frame_str, "-dspoilers")) {
         dspoilers = true;
+    } else if (strstr(frame_str, "-redundant")) {
+        redundant = true;
     }
     if (strstr(frame_str, "-elevrev")) {
         reverse_elevator_rudder = true;
@@ -81,7 +82,11 @@ Plane::Plane(const char *frame_str) :
         ground_behavior = GROUND_BEHAVIOR_TAILSITTER;
         thrust_scale *= 1.5;
     }
+    if (strstr(frame_str, "-steering")) {
+        have_steering = true;
+    }
 
+#if AP_FILESYSTEM_FILE_READING_ENABLED
     if (strstr(frame_str, "-3d")) {
         aerobatic = true;
         thrust_scale *= 1.5;
@@ -89,7 +94,8 @@ Plane::Plane(const char *frame_str) :
         AP_Param::load_defaults_file("@ROMFS/models/plane.parm", false);
         AP_Param::load_defaults_file("@ROMFS/models/plane-3d.parm", false);
     }
-    
+#endif
+
     if (strstr(frame_str, "-ice")) {
         ice_engine = true;
     }
@@ -307,6 +313,13 @@ void Plane::calculate_forces(const struct sitl_input &input, Vector3f &rot_accel
         aileron  = (elevon_right-elevon_left)/2;
         elevator = (elevon_left+elevon_right)/2;
         rudder = fabsf(dspoiler1_right - dspoiler2_right)/2 - fabsf(dspoiler1_left - dspoiler2_left)/2;
+    } else if (redundant) {
+        // channels 1/9 are left/right ailierons
+        // channels 2/10 are left/right elevators
+        // channels 4/12 are top/bottom rudders
+        aileron  = (filtered_servo_angle(input, 0) + filtered_servo_angle(input, 8)) / 2.0;
+        elevator = (filtered_servo_angle(input, 1) + filtered_servo_angle(input, 9)) / 2.0;
+        rudder   = (filtered_servo_angle(input, 3) + filtered_servo_angle(input, 11)) / 2.0;
     }
     //printf("Aileron: %.1f elevator: %.1f rudder: %.1f\n", aileron, elevator, rudder);
 
@@ -394,6 +407,18 @@ void Plane::update(const struct sitl_input &input)
     calculate_forces(input, rot_accel);
     
     update_dynamics(rot_accel);
+
+    /*
+      add in ground steering, this should be replaced with a proper
+      calculation of a nose wheel effect
+    */
+    if (have_steering && on_ground()) {
+        const float steering = filtered_servo_angle(input, 4);
+        const Vector3f velocity_bf = dcm.transposed() * velocity_ef;
+        const float steer_scale = radians(5);
+        gyro.z += steering * velocity_bf.x * steer_scale;
+    }
+
     update_external_payload(input);
 
     // update lat/lon/altitude

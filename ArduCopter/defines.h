@@ -2,14 +2,6 @@
 
 #include <AP_HAL/AP_HAL_Boards.h>
 
-// Just so that it's completely clear...
-#define ENABLED                 1
-#define DISABLED                0
-
-// this avoids a very common config error
-#define ENABLE ENABLED
-#define DISABLE DISABLED
-
 // Frame types
 #define UNDEFINED_FRAME 0
 #define MULTICOPTER_FRAME 1
@@ -76,18 +68,6 @@ enum class AirMode {
     AIRMODE_ENABLED,
 };
 
-enum PayloadPlaceStateType {
-    PayloadPlaceStateType_FlyToLocation,
-    PayloadPlaceStateType_Descent_Start,
-    PayloadPlaceStateType_Descent,
-    PayloadPlaceStateType_Release,
-    PayloadPlaceStateType_Releasing,
-    PayloadPlaceStateType_Delay,
-    PayloadPlaceStateType_Ascent_Start,
-    PayloadPlaceStateType_Ascent,
-    PayloadPlaceStateType_Done,
-};
-
 // bit options for DEV_OPTIONS parameter
 enum DevOptions {
     DevOptionADSBMAVLink = 1,
@@ -107,7 +87,8 @@ enum LoggingParameters {
      LOG_GUIDED_POSITION_TARGET_MSG,
      LOG_SYSIDD_MSG,
      LOG_SYSIDS_MSG,
-     LOG_GUIDED_ATTITUDE_TARGET_MSG
+     LOG_GUIDED_ATTITUDE_TARGET_MSG,
+     LOG_RATE_THREAD_DT_MSG
 };
 
 #define MASK_LOG_ATTITUDE_FAST          (1<<0)
@@ -141,6 +122,7 @@ enum LoggingParameters {
 #define FS_THR_ENABLED_ALWAYS_SMARTRTL_OR_RTL      4
 #define FS_THR_ENABLED_ALWAYS_SMARTRTL_OR_LAND     5
 #define FS_THR_ENABLED_AUTO_RTL_OR_RTL             6
+#define FS_THR_ENABLED_BRAKE_OR_LAND               7
 
 // GCS failsafe definitions (FS_GCS_ENABLE parameter)
 #define FS_GCS_DISABLED                        0
@@ -150,6 +132,7 @@ enum LoggingParameters {
 #define FS_GCS_ENABLED_ALWAYS_SMARTRTL_OR_LAND 4
 #define FS_GCS_ENABLED_ALWAYS_LAND             5
 #define FS_GCS_ENABLED_AUTO_RTL_OR_RTL         6
+#define FS_GCS_ENABLED_BRAKE_OR_LAND           7
 
 // EKF failsafe definitions (FS_EKF_ACTION parameter)
 #define FS_EKF_ACTION_LAND                  1       // switch to LAND mode on EKF failsafe
